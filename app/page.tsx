@@ -18,6 +18,7 @@ import {
 import type {
   FloodPrediction, RiverStation, RiverReading, AlertSent,
 } from "@/lib/types";
+import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
 
 const FloodMap = dynamic(
   () => import("@/components/map/FloodMap").then((m) => ({ default: m.FloodMap })),
@@ -373,18 +374,37 @@ export default function DashboardContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [predictions]);
 
-  /* ── Sync handler ───────────────────────── */
+  /* ── Sync handler — progressive single calls (Hobby 10s limit) ── */
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
     try {
+      // Sync data sources first (fast — just DB writes)
       await fetch("/api/sync/all", { method: "POST" });
-      const agentRes = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "all" }),
-      });
-      const data = await agentRes.json();
-      if (data.predictions) setPredictions(data.predictions);
+
+      // Predict one upazila at a time (~4s each, well under 10s).
+      // Update the UI after each result so predictions fill in progressively.
+      for (const loc of MONITORING_LOCATIONS) {
+        try {
+          const res = await fetch("/api/agent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "single", upazila: loc.upazila, district: loc.district }),
+          });
+          const data = await res.json();
+          if (data.prediction) {
+            const newPred = data.prediction as FloodPrediction;
+            setPredictions((prev) => {
+              const filtered = prev.filter((p) => p.upazila !== newPred.upazila);
+              return [newPred, ...filtered];
+            });
+          }
+        } catch (err) {
+          console.error(`[sync] ${loc.upazila} failed:`, err);
+        }
+        // 1s gap between calls — keeps rate limits happy and gives the UI a moment to render
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
       await fetchDashboardData();
     } catch (err) {
       console.error("[sync] error:", err);

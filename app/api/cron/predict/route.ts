@@ -3,7 +3,7 @@ import { runAllPredictions } from "@/lib/agent/predict";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logPredictionTrace } from "@/lib/arize/trace";
 
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 function validateCronSecret(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;

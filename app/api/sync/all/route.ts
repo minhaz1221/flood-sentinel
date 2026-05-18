@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 import { fetchBWDBReadings } from "@/lib/sync/bwdb";
 import { fetchRainfallData } from "@/lib/sync/rainfall";

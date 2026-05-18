@@ -4,7 +4,7 @@ import { sendSMSAlert, sendWhatsAppAlert } from "@/lib/alerts/twilio";
 import { createFloodIncident } from "@/lib/gitlab/incidents";
 import type { FloodPrediction } from "@/lib/types";
 
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 function validateCronSecret(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;

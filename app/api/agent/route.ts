@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { predictFloodRisk, runAllPredictions, predictHistorical } from "@/lib/agent/predict";
@@ -140,8 +140,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "targetDate required for historical mode" }, { status: 400 });
       }
 
-      console.log(`[HISTORICAL DEBUG] POST /api/agent historical mode: targetDate=${targetDate} upazila=${upazila ?? "all"}`);
-      const results = await predictHistorical(targetDate, upazila);
+      // Hobby plan: only predict for the 2 most critical upazilas to stay under 10s limit.
+      // Pass upazila=__demo__ to get both Sylhet Sadar + Sunamganj Sadar (the CRITICAL ones).
+      const demoUpazila = upazila ?? "__demo__";
+      const effectiveUpazila = demoUpazila === "__demo__" ? undefined : upazila;
+
+      console.log(`[HISTORICAL DEBUG] POST /api/agent historical mode: targetDate=${targetDate} upazila=${effectiveUpazila ?? "demo-2"}`);
+      const allResults = await predictHistorical(targetDate, effectiveUpazila);
+
+      // When in demo mode, keep only the 2 most critical upazilas
+      const DEMO_UPAZILAS = ["Sylhet Sadar", "Sunamganj Sadar"];
+      const results = demoUpazila === "__demo__"
+        ? allResults.filter((r) => DEMO_UPAZILAS.includes(r.upazila))
+        : allResults;
       console.log(`[HISTORICAL DEBUG] predictHistorical returned ${results.length} predictions`);
 
       return NextResponse.json({

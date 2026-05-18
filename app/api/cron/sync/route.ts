@@ -4,7 +4,7 @@ import { fetchRainfallData } from "@/lib/sync/rainfall";
 import { fetchExtendedForecast } from "@/lib/sync/forecast";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 function validateCronSecret(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
