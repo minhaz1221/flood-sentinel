@@ -149,6 +149,33 @@ export async function predictHistorical(
   return results;
 }
 
+// Predict one upazila from historical seed data — no loops, one Gemini call.
+// Completes in ~4s, safe under Vercel Hobby 10s limit.
+export async function predictHistoricalSingle(
+  upazila: string,
+  district: string,
+  targetDate: string
+): Promise<PredictionResult | null> {
+  const asOf = new Date(targetDate + "T12:00:00Z");
+  console.log(`[HISTORICAL] predictHistoricalSingle: ${upazila} asOf=${asOf.toISOString()}`);
+
+  const [context, mcpContext] = await Promise.all([
+    buildUpazilaContext(upazila, district, { asOf, source: "historical_seed" }),
+    getMcpContext(),
+  ]);
+
+  console.log(`[HISTORICAL] ${upazila}: stations=${context.stations.length} danger_pct=${context.max_danger_pct} rainfall=${context.rainfall_72h_mm}mm`);
+
+  try {
+    const prediction = await callGemini(context, mcpContext);
+    console.log(`[HISTORICAL] ${upazila}: risk=${prediction.risk_level} score=${prediction.risk_score}`);
+    return prediction;
+  } catch (err) {
+    console.error(`[HISTORICAL] ${upazila} Gemini failed:`, err);
+    return null;
+  }
+}
+
 // Legacy single-input mode (used by old /api/agent route)
 export async function runFloodPrediction(input: {
   upazila: string;

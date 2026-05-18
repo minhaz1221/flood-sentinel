@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 10;
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { predictFloodRisk, runAllPredictions, predictHistorical } from "@/lib/agent/predict";
+import { predictFloodRisk, runAllPredictions, predictHistoricalSingle } from "@/lib/agent/predict";
 import { logPredictionTrace } from "@/lib/arize/trace";
 import { createFloodIncident } from "@/lib/gitlab/incidents";
 import type { AgentRequest, PredictionResult, FloodPrediction, GeminiKeySignal } from "@/lib/types";
@@ -135,35 +135,31 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "historical") {
-      const { targetDate, upazila } = body;
-      if (!targetDate) {
-        return NextResponse.json({ error: "targetDate required for historical mode" }, { status: 400 });
+      const targetDate = body.targetDate || "2022-06-16";
+
+      // Only predict for the 2 most critical upazilas — 2 Gemini calls ~8s total, under 10s Hobby limit.
+      const CRITICAL_UPAZILAS = [
+        { upazila: "Sylhet Sadar",    district: "Sylhet"    },
+        { upazila: "Sunamganj Sadar", district: "Sunamganj" },
+      ];
+
+      console.log(`[HISTORICAL] mode=historical targetDate=${targetDate} upazilas=${CRITICAL_UPAZILAS.map((u) => u.upazila).join(", ")}`);
+
+      const predictions: PredictionResult[] = [];
+      for (const loc of CRITICAL_UPAZILAS) {
+        const result = await predictHistoricalSingle(loc.upazila, loc.district, targetDate);
+        if (result) predictions.push(result);
       }
 
-      // Hobby plan: only predict for the 2 most critical upazilas to stay under 10s limit.
-      // Pass upazila=__demo__ to get both Sylhet Sadar + Sunamganj Sadar (the CRITICAL ones).
-      const demoUpazila = upazila ?? "__demo__";
-      const effectiveUpazila = demoUpazila === "__demo__" ? undefined : upazila;
-
-      console.log(`[HISTORICAL DEBUG] POST /api/agent historical mode: targetDate=${targetDate} upazila=${effectiveUpazila ?? "demo-2"}`);
-      const allResults = await predictHistorical(targetDate, effectiveUpazila);
-
-      // When in demo mode, keep only the 2 most critical upazilas
-      const DEMO_UPAZILAS = ["Sylhet Sadar", "Sunamganj Sadar"];
-      const results = demoUpazila === "__demo__"
-        ? allResults.filter((r) => DEMO_UPAZILAS.includes(r.upazila))
-        : allResults;
-      console.log(`[HISTORICAL DEBUG] predictHistorical returned ${results.length} predictions`);
+      console.log(`[HISTORICAL] done — ${predictions.length} predictions returned`);
 
       return NextResponse.json({
         mode: "historical",
         targetDate,
-        predictions: results,
-        count: results.length,
-        // Surface a warning when zero predictions returned so callers can distinguish
-        // "no data found" from a successful run with empty results
-        ...(results.length === 0 && {
-          warning: "No predictions generated — check server logs for [HISTORICAL DEBUG] entries. Common causes: GEMINI_API_KEY invalid, or no river_readings rows with source='historical_seed' for this date range.",
+        predictions,
+        count: predictions.length,
+        ...(predictions.length === 0 && {
+          warning: "No predictions generated — check GEMINI_API_KEY and historical_seed rows in river_readings.",
         }),
       });
     }
