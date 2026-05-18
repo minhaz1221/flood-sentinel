@@ -12,19 +12,20 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as DispatchBody;
     const supabase = createAdminClient();
 
-    // ── Auto mode: dispatch all unalerted HIGH/CRITICAL from last 2h ─────────
+    // ── Auto mode: dispatch all unalerted HIGH/CRITICAL predictions ──────────
+    // No time restriction — alerts_sent deduplication prevents re-dispatching.
+    // Ordered by predicted_at DESC, limited to 50 rows to stay bounded.
     if ("mode" in body && body.mode === "auto") {
-      const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-
       const { data: predictions, error: predErr } = await supabase
         .from("flood_predictions")
         .select()
         .in("risk_level", ["high", "critical"])
-        .gte("predicted_at", since);
+        .order("predicted_at", { ascending: false })
+        .limit(50);
 
       if (predErr) throw predErr;
 
-      // Find which prediction IDs already have alerts
+      // Only dispatch predictions that have never been alerted
       const predIds = (predictions ?? []).map((p) => p.id);
       const { data: existingAlerts } = await supabase
         .from("alerts_sent")
