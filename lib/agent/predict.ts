@@ -4,7 +4,7 @@ import { buildUpazilaContext } from "./aggregator";
 import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
 import type { PredictionResult, UpazilaContext } from "@/lib/types";
 
-const MODEL_NAME = "gemini-2.0-flash";
+const MODEL_NAME = "gemini-2.5-flash-lite";
 
 function getGenAI(): GoogleGenerativeAI {
   const apiKey = process.env.GEMINI_API_KEY;
