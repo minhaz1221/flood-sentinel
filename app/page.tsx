@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import { X } from "lucide-react";
+import { X, Volume2, VolumeX } from "lucide-react";
+import { playAlarmSound, playWarningSound } from "@/lib/audio/alarm";
+import { generateVoiceAlert } from "@/lib/audio/voice";
 import { StatsBar } from "@/components/dashboard/StatsBar";
 import { UpazilaPanel } from "@/components/dashboard/UpazilaPanel";
 import { RiverChart } from "@/components/dashboard/RiverChart";
@@ -82,9 +84,13 @@ export default function DashboardPage() {
   const [dbStatus, setDbStatus]                 = useState<DbStatus>("checking");
   const [criticalDismissed, setCriticalDismissed] = useState<Set<string>>(new Set());
   const [evalReport, setEvalReport]             = useState<Record<string, unknown> | null>(null);
+  const [isMuted, setIsMuted]                   = useState(false);
+  const [toast, setToast]                       = useState<string | null>(null);
 
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const healthTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const healthTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPlayedIdsRef  = useRef<Set<string>>(new Set());
+  const skipNextAudioRef  = useRef(false);
 
   const fetchDashboardData = useCallback(async () => {
     setIsLoading(true);
@@ -146,6 +152,15 @@ export default function DashboardPage() {
     setHistoricalDate(date);
     setIsHistoricalMode(true);
     setIsMapLoading(true);
+    const d = new Date(date);
+    if (d.getMonth() === 5 && d.getDate() >= 15 && d.getDate() <= 18) {
+      if (!isMuted) {
+        playAlarmSound();
+        setToast("⚠ Replaying peak flood event — audio alert triggered");
+        setTimeout(() => setToast(null), 5000);
+      }
+      skipNextAudioRef.current = true;
+    }
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -159,7 +174,7 @@ export default function DashboardPage() {
     } finally {
       setIsMapLoading(false);
     }
-  }, []);
+  }, [isMuted]);
 
   const handleExitHistorical = useCallback(async () => {
     setIsHistoricalMode(false);
@@ -190,6 +205,27 @@ export default function DashboardPage() {
     if (activeTab !== "arize" || evalReport) return;
     fetch("/api/agent/evaluate").then((r) => r.json()).then((d) => setEvalReport(d)).catch(() => {});
   }, [activeTab, evalReport]);
+
+  useEffect(() => {
+    try { setIsMuted(localStorage.getItem("floodsentinel_muted") === "true"); } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (isMuted || predictions.length === 0) return;
+    const newPreds = predictions.filter((p) => !lastPlayedIdsRef.current.has(p.id));
+    if (newPreds.length === 0) return;
+    predictions.forEach((p) => lastPlayedIdsRef.current.add(p.id));
+    if (skipNextAudioRef.current) { skipNextAudioRef.current = false; return; }
+    const hasCritical = predictions.some((p) => p.risk_level === "critical");
+    const hasHigh     = predictions.some((p) => p.risk_level === "high");
+    if (hasCritical) {
+      playAlarmSound();
+      const critPred = predictions.find((p) => p.risk_level === "critical");
+      if (critPred) generateVoiceAlert(critPred);
+    } else if (hasHigh) {
+      playWarningSound();
+    }
+  }, [predictions, isMuted]);
 
   const selectedPrediction = predictions.find((p) => p.upazila === selectedUpazila);
   const selectedStationObj  = stations.find((s) => s.station_id === selectedStation);
@@ -335,6 +371,32 @@ export default function DashboardPage() {
             onSync={handleSync}
           />
         </div>
+
+        {/* Mute toggle */}
+        <button
+          onClick={() => {
+            const next = !isMuted;
+            setIsMuted(next);
+            try { localStorage.setItem("floodsentinel_muted", String(next)); } catch {}
+          }}
+          title={isMuted ? "Unmute alerts" : "Mute alerts"}
+          style={{
+            ...monoStyle,
+            fontSize: 11, letterSpacing: "0.08em",
+            border: "1px solid var(--border-mid)",
+            background: isMuted ? "rgba(255,255,255,0.03)" : "var(--bg-raised)",
+            color: isMuted ? "var(--text-dim)" : "var(--text-secondary)",
+            padding: "3px 10px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            flexShrink: 0,
+            borderRadius: 0,
+          }}
+        >
+          {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+        </button>
 
         {/* DB status */}
         <div className="hidden md:flex items-center gap-2 shrink-0">
@@ -530,6 +592,28 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{
+          position: "fixed",
+          top: 56,
+          right: 16,
+          zIndex: 200,
+          background: "rgba(255,204,0,0.10)",
+          border: "1px solid var(--risk-medium)",
+          borderLeft: "3px solid var(--risk-medium)",
+          padding: "10px 16px",
+          ...monoStyle,
+          fontSize: 11,
+          letterSpacing: "0.06em",
+          color: "var(--risk-medium)",
+          maxWidth: 380,
+          pointerEvents: "none",
+        }}>
+          {toast}
+        </div>
+      )}
 
       {/* ── Historical replay / entry bar ── */}
       {isHistoricalMode ? (
