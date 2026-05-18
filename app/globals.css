@@ -1,0 +1,300 @@
+@import "tailwindcss";
+
+/* ── Design tokens ─────────────────────────────────── */
+:root {
+  --bg-void:    #050810;
+  --bg-deep:    #080d1a;
+  --bg-surface: #0c1220;
+  --bg-raised:  #101828;
+
+  --border-dim:    rgba(255,255,255,0.06);
+  --border-mid:    rgba(255,255,255,0.12);
+  --border-bright: rgba(255,255,255,0.24);
+
+  --cyan:     #00d4ff;
+  --cyan-dim: rgba(0,212,255,0.15);
+  --cyan-glow: 0 0 20px rgba(0,212,255,0.4);
+
+  --risk-low:      #00ff88;
+  --risk-medium:   #ffcc00;
+  --risk-high:     #ff6600;
+  --risk-critical: #ff1a1a;
+
+  --glow-low:      0 0 12px rgba(0,255,136,0.5);
+  --glow-medium:   0 0 12px rgba(255,204,0,0.5);
+  --glow-high:     0 0 12px rgba(255,102,0,0.5);
+  --glow-critical: 0 0 20px rgba(255,26,26,0.7);
+
+  --text-primary:   #e8f0ff;
+  --text-secondary: #7a8ba8;
+  --text-dim:       #3d4f6a;
+}
+
+/* ── Tailwind theme mapping ──────────────────────────── */
+@theme inline {
+  --font-display: var(--font-bebas-neue);
+  --font-sans:    var(--font-dm-sans);
+  --font-mono:    var(--font-jetbrains-mono);
+
+  --color-background: var(--bg-deep);
+  --color-foreground: var(--text-primary);
+}
+
+/* ── Base ────────────────────────────────────────────── */
+html { background: var(--bg-void); }
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-dm-sans, 'DM Sans', sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scanline CRT overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+/* ── Animated tactical grid background ──────────────── */
+.tactical-grid {
+  background-image:
+    linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: grid-pan 8s linear infinite;
+}
+
+@keyframes grid-pan {
+  0%   { background-position: 0 0; }
+  100% { background-position: 40px 40px; }
+}
+
+/* ── Corner bracket decoration ───────────────────────── */
+.bracket-corner { position: relative; }
+
+.bracket-corner::before,
+.bracket-corner::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--cyan);
+  border-style: solid;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.bracket-corner:hover::before,
+.bracket-corner:hover::after { opacity: 1; }
+
+.bracket-corner::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+}
+
+.bracket-corner::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+/* ── Animations ──────────────────────────────────────── */
+@keyframes glitch {
+  0%   { transform: translateX(0)    skewX(0deg);   }
+  20%  { transform: translateX(-2px) skewX(-1deg);  }
+  40%  { transform: translateX(2px)  skewX(1deg);   }
+  60%  { transform: translateX(-2px) skewX(0deg);   }
+  80%  { transform: translateX(2px)  skewX(-1deg);  }
+  100% { transform: translateX(0)    skewX(0deg);   }
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1;   }
+  50%       { opacity: 0.2; }
+}
+
+@keyframes risk-ring {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  70%  { transform: scale(2.4); opacity: 0;   }
+  100% { transform: scale(2.4); opacity: 0;   }
+}
+
+@keyframes diamond-pulse {
+  0%   { transform: rotate(45deg) scale(1);   opacity: 0.7; }
+  70%  { transform: rotate(45deg) scale(2.8); opacity: 0;   }
+  100% { transform: rotate(45deg) scale(2.8); opacity: 0;   }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400% 0; }
+  100% { background-position:  400% 0; }
+}
+
+@keyframes banner-sweep {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.animate-glitch       { animation: glitch       0.3s steps(2) infinite; }
+.animate-blink        { animation: blink-dot     1.4s ease-in-out infinite; }
+.animate-risk-ring    { animation: risk-ring     1.6s cubic-bezier(0,0,0.2,1) infinite; }
+.critical-diamond-ring { animation: diamond-pulse 1.6s cubic-bezier(0,0,0.2,1) infinite; }
+
+/* ── Shimmer skeleton ────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--bg-surface) 25%,
+    var(--bg-raised)  50%,
+    var(--bg-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ── Critical banner sweep ───────────────────────────── */
+.banner-shimmer {
+  background: linear-gradient(90deg,
+    #1a0000 0%,
+    #2d0000 40%,
+    #3d0505 50%,
+    #2d0000 60%,
+    #1a0000 100%
+  );
+  background-size: 200% 100%;
+  animation: banner-sweep 3s linear infinite;
+}
+
+/* ── Tactical range slider ───────────────────────────── */
+.tactical-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  background: var(--border-dim);
+  outline: none;
+  cursor: pointer;
+}
+
+.tactical-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--cyan);
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  cursor: pointer;
+  box-shadow: var(--cyan-glow);
+}
+
+.tactical-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--cyan);
+  border: none;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  cursor: pointer;
+}
+
+/* ── Scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-void); }
+::-webkit-scrollbar-thumb { background: var(--border-mid); }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
+
+/* ── Leaflet dark overrides ──────────────────────────── */
+.leaflet-container {
+  background: var(--bg-void) !important;
+  font-family: var(--font-dm-sans), sans-serif;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-mid) !important;
+  border-radius: 0 !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.8), 0 0 0 1px var(--border-dim) !important;
+  color: var(--text-primary) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-tip { background: var(--bg-surface) !important; }
+
+.leaflet-popup-content { margin: 0 !important; width: auto !important; }
+
+.leaflet-popup-close-button {
+  color: var(--text-secondary) !important;
+  top: 8px !important;
+  right: 8px !important;
+  font-family: var(--font-jetbrains-mono), monospace;
+}
+
+.leaflet-popup-close-button:hover { color: var(--text-primary) !important; }
+
+.leaflet-control-zoom {
+  border: 1px solid var(--border-mid) !important;
+  border-radius: 0 !important;
+  overflow: hidden;
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border-dim) !important;
+  font-family: var(--font-jetbrains-mono), monospace !important;
+}
+
+.leaflet-control-zoom-in:hover,
+.leaflet-control-zoom-out:hover { background: var(--bg-raised) !important; }
+
+.leaflet-tooltip {
+  background: var(--bg-raised) !important;
+  border: 1px solid var(--border-mid) !important;
+  color: var(--text-primary) !important;
+  border-radius: 0 !important;
+  font-size: 11px !important;
+  font-family: var(--font-jetbrains-mono), monospace !important;
+  padding: 4px 8px !important;
+  letter-spacing: 0.05em !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
+}
+
+.leaflet-tooltip-top::before { border-top-color: var(--border-mid) !important; }
+
+.leaflet-attribution-flag { display: none !important; }
+
+.leaflet-control-attribution {
+  background: rgba(5,8,16,0.8) !important;
+  color: var(--text-dim) !important;
+  font-size: 9px !important;
+  font-family: var(--font-jetbrains-mono), monospace !important;
+}
+
+.leaflet-control-attribution a { color: var(--cyan) !important; }
+
+/* ── Recharts overrides ──────────────────────────────── */
+.recharts-cartesian-axis-tick-value {
+  fill: var(--text-dim) !important;
+  font-size: 10px;
+  font-family: var(--font-jetbrains-mono), monospace;
+}
+
+.recharts-text { fill: var(--text-secondary) !important; }
+.recharts-legend-item-text { color: var(--text-secondary) !important; }
+
+/* ── Tab active ──────────────────────────────────────── */
+.tab-active {
+  border-bottom: 2px solid var(--cyan);
+  color: var(--cyan);
+}
