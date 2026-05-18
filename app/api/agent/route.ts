@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
 
       console.log(`[HISTORICAL] mode=historical targetDate=${targetDate} upazilas=${CRITICAL_UPAZILAS.map((u) => u.upazila).join(", ")}`);
 
-      const predictions: PredictionResult[] = [];
+      const predictions: Array<PredictionResult & { id: string }> = [];
       for (const loc of CRITICAL_UPAZILAS) {
         const result = await predictHistoricalSingle(loc.upazila, loc.district, targetDate);
         if (result) predictions.push(result);

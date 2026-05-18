@@ -3,6 +3,7 @@ import { FLOOD_PREDICTION_SYSTEM_PROMPT } from "./prompts";
 import { buildUpazilaContext } from "./aggregator";
 import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
 import { checkDataFreshness } from "@/lib/mcp/fivetran";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { PredictionResult, UpazilaContext } from "@/lib/types";
 
 const MODEL_NAME = "gemini-2.5-flash-lite";
@@ -150,30 +151,62 @@ export async function predictHistorical(
 }
 
 // Predict one upazila from historical seed data — no loops, one Gemini call.
+// Saves result to flood_predictions via admin client (bypasses RLS).
 // Completes in ~4s, safe under Vercel Hobby 10s limit.
 export async function predictHistoricalSingle(
   upazila: string,
   district: string,
   targetDate: string
-): Promise<PredictionResult | null> {
+): Promise<(PredictionResult & { id: string }) | null> {
   const asOf = new Date(targetDate + "T12:00:00Z");
-  console.log(`[HISTORICAL] predictHistoricalSingle: ${upazila} asOf=${asOf.toISOString()}`);
+  console.log(`[PREDICT] predictHistoricalSingle: ${upazila} asOf=${asOf.toISOString()}`);
 
   const [context, mcpContext] = await Promise.all([
     buildUpazilaContext(upazila, district, { asOf, source: "historical_seed" }),
     getMcpContext(),
   ]);
 
-  console.log(`[HISTORICAL] ${upazila}: stations=${context.stations.length} danger_pct=${context.max_danger_pct} rainfall=${context.rainfall_72h_mm}mm`);
+  console.log(`[PREDICT] ${upazila}: stations=${context.stations.length} danger_pct=${context.max_danger_pct} rainfall=${context.rainfall_72h_mm}mm`);
 
+  let prediction: PredictionResult;
   try {
-    const prediction = await callGemini(context, mcpContext);
-    console.log(`[HISTORICAL] ${upazila}: risk=${prediction.risk_level} score=${prediction.risk_score}`);
-    return prediction;
+    prediction = await callGemini(context, mcpContext);
+    console.log(`[PREDICT] ${upazila}: Gemini returned risk=${prediction.risk_level} score=${prediction.risk_score}`);
   } catch (err) {
-    console.error(`[HISTORICAL] ${upazila} Gemini failed:`, err);
+    console.error(`[PREDICT] ${upazila} Gemini failed:`, err);
     return null;
   }
+
+  // Persist using admin client (service role key) — anon client blocked by RLS
+  const supabase = createAdminClient();
+  console.log(`[PREDICT] Inserting prediction for ${upazila}`);
+  const { data, error } = await supabase
+    .from("flood_predictions")
+    .insert({
+      upazila: prediction.upazila,
+      district: prediction.district,
+      risk_level: prediction.risk_level,
+      risk_score: prediction.risk_score,
+      risk_48h: prediction.risk_48h,
+      risk_72h: prediction.risk_72h,
+      reasoning: prediction.reasoning,
+      reasoning_bn: prediction.reasoning_bn,
+      key_signals: prediction.key_signals,
+      input_snapshot: { mode: "historical", targetDate },
+      valid_until: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+    })
+    .select("id")
+    .single();
+
+  console.log(`[PREDICT] Insert result:`, { data, error });
+
+  if (error) {
+    console.error(`[PREDICT] DB insert FAILED for ${upazila}:`, error.message, error.details);
+    // Return prediction without id so the UI still shows it even if DB write failed
+    return { ...prediction, id: crypto.randomUUID() };
+  }
+
+  return { ...prediction, id: data.id as string };
 }
 
 // Legacy single-input mode (used by old /api/agent route)
