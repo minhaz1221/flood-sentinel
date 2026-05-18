@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { FLOOD_PREDICTION_SYSTEM_PROMPT } from "./prompts";
 import { buildUpazilaContext } from "./aggregator";
 import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
+import { checkDataFreshness } from "@/lib/mcp/fivetran";
 import type { PredictionResult, UpazilaContext } from "@/lib/types";
 
 const MODEL_NAME = "gemini-2.5-flash-lite";
@@ -12,7 +13,15 @@ function getGenAI(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(apiKey);
 }
 
-async function callGemini(context: UpazilaContext): Promise<PredictionResult> {
+// Calls Fivetran MCP to check data freshness before prediction
+async function getMcpContext(): Promise<string> {
+  console.log("[MCP] Calling Fivetran MCP: fivetran_check_freshness");
+  const freshness = await checkDataFreshness();
+  console.log("[MCP] Fivetran response:", freshness.recommendation);
+  return `\nDATA PIPELINE STATUS (via Fivetran MCP):\n- Data freshness: ${freshness.isFresh ? "FRESH" : "STALE"}\n- Stale sources: ${freshness.staleSources.join(", ") || "none"}\n- Recommendation: ${freshness.recommendation}\n`;
+}
+
+async function callGemini(context: UpazilaContext, mcpContext = ""): Promise<PredictionResult> {
   const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
@@ -24,7 +33,7 @@ async function callGemini(context: UpazilaContext): Promise<PredictionResult> {
     },
   });
 
-  const prompt = JSON.stringify(context, null, 2);
+  const prompt = mcpContext + JSON.stringify(context, null, 2);
   const result = await model.generateContent(prompt);
   const text = result.response.text();
 
@@ -58,17 +67,23 @@ export async function predictFloodRisk(
   upazila: string,
   district: string
 ): Promise<PredictionResult> {
-  const context = await buildUpazilaContext(upazila, district);
-  return callGemini(context);
+  const [context, mcpContext] = await Promise.all([
+    buildUpazilaContext(upazila, district),
+    getMcpContext(),
+  ]);
+  return callGemini(context, mcpContext);
 }
 
 // All monitored upazilas — runs sequentially to avoid rate limits
 export async function runAllPredictions(): Promise<PredictionResult[]> {
+  // Fetch MCP freshness once for the whole batch
+  const mcpContext = await getMcpContext();
+
   const results: PredictionResult[] = [];
   for (const loc of MONITORING_LOCATIONS) {
     try {
       const context = await buildUpazilaContext(loc.upazila, loc.district);
-      const prediction = await callGemini(context);
+      const prediction = await callGemini(context, mcpContext);
       results.push(prediction);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -95,6 +110,9 @@ export async function predictHistorical(
   const results: PredictionResult[] = [];
   const errors: string[] = [];
 
+  // MCP check once for the historical batch
+  const mcpContext = await getMcpContext();
+
   for (const loc of locations) {
     try {
       console.log(`[HISTORICAL DEBUG] Building context for ${loc.upazila}...`);
@@ -111,7 +129,7 @@ export async function predictHistorical(
       }
 
       console.log(`[HISTORICAL DEBUG] ${loc.upazila}: calling Gemini...`);
-      const prediction = await callGemini(context);
+      const prediction = await callGemini(context, mcpContext);
       console.log(`[HISTORICAL DEBUG] ${loc.upazila}: Gemini returned risk_level=${prediction.risk_level} score=${prediction.risk_score}`);
 
       results.push(prediction);

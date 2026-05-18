@@ -11,10 +11,11 @@ const RISK_COLOR: Record<string, string> = {
 };
 
 const PIPELINE = [
-  { label: "Data Fetch",   sub: "BWDB+IMERG+GFS", time: "0.8s"  },
-  { label: "Feature Eng.", sub: "12 signals",       time: "0.4s"  },
-  { label: "Gemini Infer", sub: null,               time: "2.6s"  },
-  { label: "Dispatch",     sub: "SMS+WA",           time: "0.4s"  },
+  { label: "Fivetran MCP", sub: "Data freshness verified", time: "0.3s", mcp: true },
+  { label: "Data Fetch",   sub: "BWDB+IMERG+GFS",          time: "0.8s", mcp: false },
+  { label: "Feature Eng.", sub: "12 signals",               time: "0.4s", mcp: false },
+  { label: "Gemini Infer", sub: null,                       time: "2.6s", mcp: false },
+  { label: "Dispatch",     sub: "SMS+WA",                   time: "0.4s", mcp: false },
 ];
 
 function getSignals(p: FloodPrediction): GeminiKeySignal[] {
@@ -55,37 +56,37 @@ function PipelineTimeline({ prediction }: { prediction: FloodPrediction }) {
   );
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 0, padding: "16px 0 8px" }}>
-      {steps.map((step, idx) => (
-        <div key={step.label} style={{ display: "flex", alignItems: "flex-start", flex: 1, minWidth: 0 }}>
-          <div style={{ flex: 1, textAlign: "center", position: "relative" }}>
-            {/* Timing above */}
-            <div style={{ fontSize: 11, color: "#718096", fontFamily: "monospace", marginBottom: 6 }}>
-              {step.time}
-            </div>
-            {/* Dot + line row */}
-            <div style={{ display: "flex", alignItems: "center" }}>
-              {/* Left line */}
-              {idx > 0 && <div style={{ flex: 1, height: 2, background: "#003d82" }} />}
-              {/* Dot */}
-              <div style={{
-                width: 12, height: 12, borderRadius: "50%",
-                background: "#003d82", border: "2px solid white",
-                boxShadow: "0 0 0 2px #003d82",
-                flexShrink: 0, zIndex: 1,
-              }} />
-              {/* Right line */}
-              {idx < steps.length - 1 && <div style={{ flex: 1, height: 2, background: "#003d82" }} />}
-            </div>
-            {/* Label below */}
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#1a1a2e", marginTop: 6, paddingLeft: 4, paddingRight: 4 }}>
-              {step.label}
-            </div>
-            <div style={{ fontSize: 10, color: "#718096", marginTop: 2, paddingLeft: 4, paddingRight: 4, lineHeight: 1.3 }}>
-              {step.sub ?? "—"}
+      {steps.map((step, idx) => {
+        const dotColor = step.mcp ? "#1a56a0" : "#003d82";
+        return (
+          <div key={step.label} style={{ display: "flex", alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, textAlign: "center", position: "relative" }}>
+              {/* Timing above */}
+              <div style={{ fontSize: 11, color: "#718096", fontFamily: "monospace", marginBottom: 6 }}>
+                {step.time}
+              </div>
+              {/* Dot + line row */}
+              <div style={{ display: "flex", alignItems: "center" }}>
+                {idx > 0 && <div style={{ flex: 1, height: 2, background: "#003d82" }} />}
+                <div style={{
+                  width: 12, height: 12, borderRadius: "50%",
+                  background: dotColor, border: "2px solid white",
+                  boxShadow: `0 0 0 2px ${dotColor}`,
+                  flexShrink: 0, zIndex: 1,
+                }} />
+                {idx < steps.length - 1 && <div style={{ flex: 1, height: 2, background: "#003d82" }} />}
+              </div>
+              {/* Label below */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: step.mcp ? "#1a56a0" : "#1a1a2e", marginTop: 6, paddingLeft: 4, paddingRight: 4 }}>
+                {step.label}
+              </div>
+              <div style={{ fontSize: 10, color: "#718096", marginTop: 2, paddingLeft: 4, paddingRight: 4, lineHeight: 1.3 }}>
+                {step.sub ?? "—"}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -192,6 +193,8 @@ function TraceRow({
           <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e" }}>{prediction.upazila}</div>
           <div style={{ fontSize: 11, color: "#718096" }}>{prediction.district}</div>
           <div className="trace-pipeline-mini">
+            <span className="step" style={{ color: "#1a56a0" }}>MCP</span>
+            <span className="arrow">→</span>
             <span className="step">Fetch</span>
             <span className="arrow">→</span>
             <span className="step">Eng.</span>

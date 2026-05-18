@@ -7,6 +7,11 @@ export interface TracePayload {
   input: Record<string, unknown>;
   output: Record<string, unknown>;
   latency_ms: number;
+  mcp?: {
+    tool: string;
+    result: string;
+    data_fresh: boolean;
+  };
 }
 
 export async function logPredictionTrace(payload: TracePayload): Promise<void> {
@@ -33,14 +38,21 @@ export async function logPredictionTrace(payload: TracePayload): Promise<void> {
     // Metadata attributes
     span.setAttribute("metadata.upazila",         payload.upazila);
     span.setAttribute("metadata.district",        payload.district);
-    span.setAttribute("metadata.model",           "gemini-1.5-pro");
+    span.setAttribute("metadata.model",           "gemini-2.5-flash");
     span.setAttribute("metadata.prediction_date", new Date().toISOString());
     span.setAttribute("metadata.latency_ms",      payload.latency_ms);
 
     // LLM-specific attributes
     span.setAttribute("llm.system",       "gemini");
-    span.setAttribute("llm.model_name",   "gemini-1.5-pro");
+    span.setAttribute("llm.model_name",   "gemini-2.5-flash");
     span.setAttribute("llm.request_type", "chat");
+
+    // MCP integration attributes
+    if (payload.mcp) {
+      span.setAttribute("mcp.tool",       payload.mcp.tool);
+      span.setAttribute("mcp.result",     payload.mcp.result);
+      span.setAttribute("mcp.data_fresh", payload.mcp.data_fresh);
+    }
 
     // Flood-Sentinel custom
     span.setAttribute("flood_sentinel.trace_id",  payload.trace_id);

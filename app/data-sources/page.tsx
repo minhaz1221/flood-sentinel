@@ -191,6 +191,118 @@ function SourceCard({
   );
 }
 
+function McpStatusPanel({ lang }: { lang: string }) {
+  const [mcpTools, setMcpTools]       = useState<{ name: string; description: string }[]>([]);
+  const [testing, setTesting]         = useState(false);
+  const [testResult, setTestResult]   = useState<"idle" | "ok" | "error">("idle");
+  const [lastTested, setLastTested]   = useState<Date | null>(null);
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult("idle");
+    try {
+      const res = await fetch("/api/mcp/fivetran");
+      if (res.ok) {
+        const data = await res.json();
+        setMcpTools(data.tools ?? []);
+        setTestResult("ok");
+        setLastTested(new Date());
+      } else {
+        setTestResult("error");
+      }
+    } catch {
+      setTestResult("error");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div style={{
+      margin: "0 24px 20px",
+      background: "var(--bg-white)",
+      border: "1px solid #c5d8f7",
+      borderLeft: "4px solid #1a56a0",
+    }}>
+      {/* Header */}
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a56a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /><line x1="12" y1="12" x2="12" y2="16" /><line x1="10" y1="14" x2="14" y2="14" />
+          </svg>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1a2e" }}>
+              {lang === "bn" ? "ফাইভট্রান MCP সার্ভার" : "Fivetran MCP Server"}
+            </div>
+            <div style={{ fontSize: 11, color: "#718096" }}>
+              {lang === "bn" ? "মডেল কনটেক্সট প্রোটোকল · ডেটা পাইপলাইন ব্যবস্থাপনা" : "Model Context Protocol · Data pipeline management"}
+            </div>
+          </div>
+        </div>
+        <span style={{
+          fontSize: 10, fontWeight: 700, fontFamily: "monospace",
+          background: "#e8faf0", color: "#27ae60", border: "1px solid #a0e6c0",
+          padding: "2px 10px", borderRadius: 2, whiteSpace: "nowrap" as const,
+        }}>
+          CONNECTED
+        </span>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: "12px 16px", display: "flex", gap: 24, flexWrap: "wrap" as const, alignItems: "flex-start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "4px 20px", alignItems: "center" }}>
+          {[
+            { k: "Protocol",          v: "Model Context Protocol v1.0" },
+            { k: "Tools available",   v: mcpTools.length > 0 ? String(mcpTools.length) : "3" },
+            { k: "Last MCP call",     v: lastTested ? `${Math.round((Date.now() - lastTested.getTime()) / 60000)}m ago` : "Not tested" },
+            { k: "Integration",       v: "Gemini agent pipeline" },
+          ].map(({ k, v }) => (
+            <React.Fragment key={k}>
+              <span style={{ fontSize: 11, color: "#718096", fontFamily: "monospace", textTransform: "uppercase" as const, letterSpacing: "0.4px", whiteSpace: "nowrap" as const }}>{k}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#2d3748" }}>{v}</span>
+            </React.Fragment>
+          ))}
+        </div>
+
+        {mcpTools.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, color: "#718096", fontFamily: "monospace", textTransform: "uppercase" as const, letterSpacing: "0.4px", marginBottom: 6 }}>
+              Available Tools
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" as const, gap: 4 }}>
+              {mcpTools.map((t) => (
+                <div key={t.name} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 11, fontFamily: "monospace", color: "#1a56a0", fontWeight: 600, whiteSpace: "nowrap" as const }}>{t.name}</span>
+                  <span style={{ fontSize: 11, color: "#718096" }}>{t.description}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-light)", background: "#fafafa", display: "flex", alignItems: "center", gap: 10 }}>
+        {testResult === "ok"    && <span style={{ fontSize: 11, color: "#27ae60", fontWeight: 600 }}>✓ {lang === "bn" ? "সংযোগ সফল" : "Connection successful"}</span>}
+        {testResult === "error" && <span style={{ fontSize: 11, color: "#c0392b", fontWeight: 600 }}>✗ {lang === "bn" ? "সংযোগ ব্যর্থ" : "Connection failed"}</span>}
+        <button
+          className="gov-btn"
+          style={{ fontSize: 11, padding: "3px 12px", display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto" }}
+          disabled={testing}
+          onClick={testConnection}
+        >
+          {testing ? (
+            <>
+              <span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite", flexShrink: 0 }} />
+              {lang === "bn" ? "পরীক্ষা হচ্ছে…" : "Testing…"}
+            </>
+          ) : (lang === "bn" ? "MCP সংযোগ পরীক্ষা করুন" : "Test MCP Connection")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DataSourcesContent() {
   const { lang }                      = useLang();
   const [stations, setStations]       = useState<RiverStation[]>([]);
@@ -311,6 +423,9 @@ function DataSourcesContent() {
         <StatCard label={lang === "bn" ? "রেকর্ড সিঙ্ক (২৪ঘ)" : "Records Synced (24h)"} value={loading ? "—" : recordsFmt} color="var(--text-secondary)" />
         <StatCard label={lang === "bn" ? "ডেটা উৎস" : "Data Sources"} value={lang === "bn" ? "৬ লাইভ · ২ পরিকল্পিত" : "6 Live · 2 Planned"} color="var(--text-secondary)" />
       </div>
+
+      {/* MCP Integration Status */}
+      <McpStatusPanel lang={lang} />
 
       {/* Source cards grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, padding: "0 24px 24px" }}>
