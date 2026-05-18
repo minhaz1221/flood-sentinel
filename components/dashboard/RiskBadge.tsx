@@ -1,57 +1,58 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import type { RiskLevel } from "@/lib/types";
+import type { Lang } from "@/lib/i18n/translations";
+import { t } from "@/lib/i18n/translations";
 
-const RISK_CONFIG: Record<RiskLevel, { color: string; glow: string; label: string }> = {
-  low:      { color: "var(--risk-low)",      glow: "var(--glow-low)",      label: "LOW"      },
-  medium:   { color: "var(--risk-medium)",   glow: "var(--glow-medium)",   label: "MEDIUM"   },
-  high:     { color: "var(--risk-high)",     glow: "var(--glow-high)",     label: "HIGH"     },
-  critical: { color: "var(--risk-critical)", glow: "var(--glow-critical)", label: "CRITICAL" },
+const RISK_BG: Record<RiskLevel, string> = {
+  low:      "#27ae60",
+  medium:   "#f39c12",
+  high:     "#e67e22",
+  critical: "#c0392b",
+};
+const RISK_FG: Record<RiskLevel, string> = {
+  low:      "white",
+  medium:   "#1a1a2e",
+  high:     "white",
+  critical: "white",
+};
+const SIZE_STYLES: Record<string, { fontSize: string; padding: string }> = {
+  sm: { fontSize: "10px", padding: "1px 7px" },
+  md: { fontSize: "11px", padding: "2px 10px" },
+  lg: { fontSize: "13px", padding: "3px 12px" },
 };
 
 interface RiskBadgeProps {
   risk_level: RiskLevel;
   level?: RiskLevel;
   size?: "sm" | "md" | "lg";
+  lang?: Lang;
   className?: string;
 }
 
-const SIZE_PX: Record<string, string> = {
-  sm: "9px",
-  md: "11px",
-  lg: "13px",
-};
-
-const SIZE_PAD: Record<string, string> = {
-  sm: "2px 6px",
-  md: "3px 8px",
-  lg: "4px 10px",
-};
-
-export function RiskBadge({ risk_level, level, size = "md", className }: RiskBadgeProps) {
+export function RiskBadge({ risk_level, level, size = "md", lang = "en", className }: RiskBadgeProps) {
   const rl = risk_level ?? level ?? "low";
-  const { color, glow, label } = RISK_CONFIG[rl];
-  const isCritical = rl === "critical";
+  const label = (t[lang][rl as keyof (typeof t)["en"]] as string) ?? rl.toUpperCase();
+  const sz = SIZE_STYLES[size];
 
   return (
     <span
-      className={cn("inline-flex items-center gap-1", isCritical ? "animate-glitch" : "", className)}
+      className={className}
       style={{
-        fontFamily: "var(--font-jetbrains-mono), monospace",
-        fontSize: SIZE_PX[size],
-        fontWeight: 600,
-        letterSpacing: "0.12em",
-        color,
-        border: `1px solid ${color}66`,
-        background: `${color}18`,
-        padding: SIZE_PAD[size],
-        borderRadius: 0,
-        boxShadow: isCritical ? glow : undefined,
+        display: "inline-flex",
+        alignItems: "center",
+        background: RISK_BG[rl],
+        color: RISK_FG[rl],
+        padding: sz.padding,
+        fontSize: sz.fontSize,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        borderRadius: 2,
         whiteSpace: "nowrap",
+        fontFamily: "var(--font-noto-sans-bengali, sans-serif)",
+        animation: rl === "critical" ? "blink-dot 2.5s ease-in-out infinite" : undefined,
       }}
     >
-      <span style={{ color, fontSize: "0.7em" }}>■</span>
       {label}
     </span>
   );

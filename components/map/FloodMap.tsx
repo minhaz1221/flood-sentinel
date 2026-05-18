@@ -4,151 +4,126 @@ import { useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
 import type { FloodPrediction, RiverStation, RiverReading, RiskLevel } from "@/lib/types";
+import type { Lang } from "@/lib/i18n/translations";
+import { t } from "@/lib/i18n/translations";
 
 const RISK_COLOR: Record<RiskLevel, string> = {
-  low:      "#00ff88",
-  medium:   "#ffcc00",
-  high:     "#ff6600",
-  critical: "#ff1a1a",
+  low:      "#27ae60",
+  medium:   "#f39c12",
+  high:     "#e67e22",
+  critical: "#c0392b",
+};
+
+const MARKER_CONFIG: Record<RiskLevel, { size: number; anchor: number; popupY: number }> = {
+  critical: { size: 44, anchor: 22, popupY: -22 },
+  high:     { size: 34, anchor: 17, popupY: -17 },
+  medium:   { size: 28, anchor: 14, popupY: -14 },
+  low:      { size: 22, anchor: 11, popupY: -11 },
 };
 
 const LOCATION_MAP = Object.fromEntries(
   MONITORING_LOCATIONS.map((l) => [l.upazila, { lat: l.lat, lon: l.lon }])
 );
 
-function createPopupHTML(p: FloodPrediction): string {
+function createRiskMarkerHtml(level: RiskLevel): string {
+  if (level === "critical") {
+    return '<div class="marker-critical-wrapper"><div class="marker-critical-pulse"></div><div class="marker-critical-pulse-2"></div><div class="marker-critical-dot">!</div></div>';
+  }
+  return `<div class="marker-${level}-wrapper"><div class="marker-${level}-dot"></div></div>`;
+}
+
+function createPopupHTML(p: FloodPrediction, lang: Lang): string {
   const color = RISK_COLOR[p.risk_level];
-  const topSignal = Array.isArray(p.key_signals) && p.key_signals.length > 0
-    ? (p.key_signals[0] as { label: string; value: string | number; unit?: string })
-    : null;
-  const reasoning1st = p.reasoning ? p.reasoning.split(".")[0] + "." : "";
+  const tr = t[lang];
+  const riskLabel = tr[p.risk_level as keyof typeof tr] as string;
+  const reasoning = lang === "bn" && p.reasoning_bn ? p.reasoning_bn : p.reasoning;
+  const reasoning1st = reasoning ? reasoning.split(".")[0] + "." : "";
   const timeAgo = (() => {
     const mins = Math.floor((Date.now() - new Date(p.predicted_at).getTime()) / 60000);
     if (mins < 60) return `${mins}m ago`;
     return `${Math.floor(mins / 60)}h ago`;
   })();
 
-  const outlook = (level: RiskLevel, label: string) =>
-    `<span style="display:inline-flex;align-items:center;gap:3px;border:1px solid ${RISK_COLOR[level]}55;color:${RISK_COLOR[level]};background:${RISK_COLOR[level]}18;padding:2px 6px;font-family:monospace;font-size:9px;letter-spacing:0.1em;">■ ${label}: ${level.toUpperCase()}</span>`;
+  const topSignal = Array.isArray(p.key_signals) && p.key_signals.length > 0
+    ? (p.key_signals[0] as { label: string; value: string | number; unit?: string })
+    : null;
+
+  const riskRow = (level: RiskLevel, label: string) => `
+    <span style="display:inline-flex;align-items:center;background:${RISK_COLOR[level]};color:${level === "medium" ? "#1a1a2e" : "white"};padding:2px 8px;font-size:10px;font-weight:700;border-radius:2px;margin-right:4px;">
+      ${label}: ${(t[lang][level as keyof typeof tr] as string) ?? level.toUpperCase()}
+    </span>`;
 
   return `
-    <div style="min-width:240px;max-width:300px;padding:14px;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg-surface,#0c1220);">
+    <div style="min-width:240px;max-width:300px;padding:14px;font-family:'Noto Sans Bengali',system-ui,sans-serif;background:white;">
       <div style="border-left:3px solid ${color};padding-left:10px;margin-bottom:10px;">
-        <h3 style="margin:0;font-size:14px;font-weight:700;color:#e8f0ff;letter-spacing:0.03em;">${p.upazila}</h3>
-        <p style="margin:2px 0 0;font-size:10px;color:#7a8ba8;font-family:monospace;">${p.district}</p>
+        <h3 style="margin:0;font-size:14px;font-weight:700;color:#1a1a2e;">${p.upazila}</h3>
+        <p style="margin:2px 0 0;font-size:11px;color:#718096;">${p.district}</p>
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        <span style="font-size:10px;color:#7a8ba8;font-family:monospace;letter-spacing:0.05em;">RISK SCORE</span>
-        <span style="font-size:16px;font-weight:700;font-family:monospace;color:${color};">${p.risk_score}<span style="font-size:10px;color:#3d4f6a;">/100</span></span>
+        <span style="font-size:11px;color:#718096;">${tr.risk_score}</span>
+        <span style="font-size:18px;font-weight:700;font-family:'Source Code Pro',monospace;color:${color};">
+          ${p.risk_score}<span style="font-size:11px;color:#cbd5e0;">/100</span>
+        </span>
       </div>
-      <div style="height:2px;background:rgba(255,255,255,0.06);margin-bottom:10px;position:relative;">
-        <div style="position:absolute;height:100%;width:${p.risk_score}%;background:${color};box-shadow:0 0 8px ${color};"></div>
+      <div style="height:3px;background:#e2e8f0;margin-bottom:10px;border-radius:2px;overflow:hidden;">
+        <div style="height:100%;width:${p.risk_score}%;background:${color};"></div>
       </div>
 
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-        ${p.risk_48h ? outlook(p.risk_48h, "48H") : ""}
-        ${p.risk_72h ? outlook(p.risk_72h, "72H") : ""}
+      <div style="margin-bottom:10px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;background:${color};color:${p.risk_level === "medium" ? "#1a1a2e" : "white"};padding:2px 10px;font-size:11px;font-weight:700;border-radius:2px;">
+          ${riskLabel}
+        </span>
+        ${p.risk_48h ? riskRow(p.risk_48h, tr.hours_48) : ""}
+        ${p.risk_72h ? riskRow(p.risk_72h, tr.hours_72) : ""}
       </div>
 
       ${topSignal ? `
-        <div style="border:1px solid rgba(255,255,255,0.06);padding:8px;margin-bottom:8px;font-family:monospace;">
-          <span style="font-size:9px;color:#3d4f6a;letter-spacing:0.08em;">KEY SIGNAL</span>
-          <div style="font-size:11px;color:${color};margin-top:2px;">${topSignal.label}: ${topSignal.value}${topSignal.unit ? " " + topSignal.unit : ""}</div>
+        <div style="border:1px solid #e2e8f0;padding:6px 10px;margin-bottom:8px;border-radius:2px;">
+          <span style="font-size:10px;color:#718096;">${tr.key_signals}</span>
+          <div style="font-size:12px;color:${color};margin-top:2px;font-weight:600;">
+            ${topSignal.label}: ${topSignal.value}${topSignal.unit ? " " + topSignal.unit : ""}
+          </div>
         </div>` : ""}
 
-      ${reasoning1st ? `<p style="font-size:11px;color:#7a8ba8;line-height:1.5;margin:0 0 8px;">${reasoning1st}</p>` : ""}
+      ${reasoning1st ? `<p style="font-size:12px;color:#4a5568;line-height:1.5;margin:0 0 6px;">${reasoning1st}</p>` : ""}
+      ${lang === "en" && p.reasoning_bn ? `<p style="font-size:11px;color:#718096;line-height:1.5;margin:0 0 6px;border-left:2px solid ${color}44;padding-left:8px;">${p.reasoning_bn.split("।")[0]}।</p>` : ""}
 
-      ${p.reasoning_bn ? `
-        <p style="font-size:11px;color:#3d4f6a;line-height:1.5;margin:0 0 8px;border-left:2px solid ${color}33;padding-left:8px;font-style:italic;">${p.reasoning_bn}</p>` : ""}
-
-      <p style="font-size:9px;color:#3d4f6a;margin:0;font-family:monospace;letter-spacing:0.05em;">UPDATED ${timeAgo.toUpperCase()}</p>
+      <p style="font-size:10px;color:#a0aec0;margin:0;font-family:'Source Code Pro',monospace;">
+        ${lang === "bn" ? "আপডেট: " : "Updated: "}${timeAgo}
+      </p>
     </div>
   `;
 }
 
-function createStationPopupHTML(station: RiverStation, reading?: RiverReading): string {
+function createStationPopupHTML(station: RiverStation, reading?: RiverReading, lang: Lang = "en"): string {
+  const tr = t[lang];
   const wl = reading?.water_level;
   const pct = wl != null && station.danger_level != null
     ? Math.round((wl / station.danger_level) * 100) : null;
-  const isAboveDanger  = wl != null && station.danger_level != null && wl >= station.danger_level;
+  const isAboveDanger  = wl != null && station.danger_level  != null && wl >= station.danger_level;
   const isAboveWarning = wl != null && station.warning_level != null && wl >= station.warning_level;
-  const barColor = isAboveDanger ? "#ff1a1a" : isAboveWarning ? "#ff6600" : "#00d4ff";
+  const barColor = isAboveDanger ? "#c0392b" : isAboveWarning ? "#e67e22" : "#003d82";
 
   return `
-    <div style="min-width:200px;padding:12px;font-family:'DM Sans',system-ui,sans-serif;">
-      <h3 style="margin:0 0 2px;font-size:13px;font-weight:700;color:#e8f0ff;">${station.station_name}</h3>
-      <p style="margin:0 0 10px;font-size:10px;color:#7a8ba8;font-family:monospace;">${station.river_name} · ${station.district}</p>
-
+    <div style="min-width:200px;padding:12px;font-family:'Noto Sans Bengali',system-ui,sans-serif;background:white;">
+      <h3 style="margin:0 0 2px;font-size:13px;font-weight:700;color:#1a1a2e;">${station.station_name}</h3>
+      <p style="margin:0 0 10px;font-size:11px;color:#718096;">${station.river_name} · ${station.district}</p>
       ${wl != null ? `
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-          <span style="font-size:10px;color:#7a8ba8;font-family:monospace;letter-spacing:0.05em;">LEVEL</span>
-          <span style="font-size:14px;font-weight:700;font-family:monospace;color:${barColor};">${wl.toFixed(2)} m</span>
+          <span style="font-size:11px;color:#718096;">${tr.water_level}</span>
+          <span style="font-size:14px;font-weight:700;font-family:'Source Code Pro',monospace;color:${barColor};">${wl.toFixed(2)} m</span>
         </div>
         ${pct != null ? `
-          <div style="height:2px;background:rgba(255,255,255,0.06);position:relative;margin-bottom:6px;">
-            <div style="position:absolute;height:100%;width:${Math.min(100, pct)}%;background:${barColor};box-shadow:0 0 6px ${barColor};"></div>
-          </div>
-          <p style="font-size:9px;color:#7a8ba8;margin:0 0 4px;font-family:monospace;">${pct}% OF DANGER</p>` : ""}
-        ${isAboveDanger  ? `<p style="font-size:10px;color:#ff1a1a;font-family:monospace;margin:4px 0 0;letter-spacing:0.06em;">▲ ABOVE DANGER LEVEL</p>` : ""}
-        ${!isAboveDanger && isAboveWarning ? `<p style="font-size:10px;color:#ff6600;font-family:monospace;margin:4px 0 0;letter-spacing:0.06em;">▲ ABOVE WARNING</p>` : ""}
-      ` : `<p style="font-size:11px;color:#7a8ba8;margin:0;font-family:monospace;">NO RECENT READING</p>`}
-
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);font-size:9px;color:#3d4f6a;font-family:monospace;letter-spacing:0.04em;">
-        ${station.danger_level != null ? `DNG ${station.danger_level}m` : ""}
-        ${station.warning_level != null ? `  WARN ${station.warning_level}m` : ""}
-      </div>
-    </div>
-  `;
-}
-
-// Diamond DivIcon HTML for a given risk level/color
-function createDiamondIcon(color: string, isCritical: boolean): string {
-  if (isCritical) {
-    return `
-      <div style="position:relative;width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
-        <div class="critical-diamond-ring" style="
-          position:absolute;
-          width:16px;height:16px;
-          border:2px solid ${color};
-          background:transparent;
-        "></div>
-        <div style="
-          width:14px;height:14px;
-          transform:rotate(45deg);
-          border:2px solid ${color};
-          background:${color}33;
-          position:relative;
-          box-shadow:0 0 12px ${color};
-        ">
-          <div style="
-            position:absolute;top:50%;left:50%;
-            transform:translate(-50%,-50%) rotate(-45deg);
-            width:4px;height:4px;
-            border-radius:50%;
-            background:${color};
-            box-shadow:0 0 6px ${color};
-          "></div>
-        </div>
-      </div>
-    `;
-  }
-  return `
-    <div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
-      <div style="
-        width:14px;height:14px;
-        transform:rotate(45deg);
-        border:2px solid ${color};
-        background:${color}33;
-        position:relative;
-      ">
-        <div style="
-          position:absolute;top:50%;left:50%;
-          transform:translate(-50%,-50%) rotate(-45deg);
-          width:4px;height:4px;
-          border-radius:50%;
-          background:${color};
-        "></div>
+          <div style="height:3px;background:#e2e8f0;border-radius:2px;overflow:hidden;margin-bottom:6px;">
+            <div style="height:100%;width:${Math.min(100, pct)}%;background:${barColor};"></div>
+          </div>` : ""}
+        ${isAboveDanger  ? `<p style="font-size:11px;color:#c0392b;font-weight:700;margin:4px 0 0;">▲ ${tr.danger_level.toUpperCase()}</p>` : ""}
+        ${!isAboveDanger && isAboveWarning ? `<p style="font-size:11px;color:#e67e22;font-weight:700;margin:4px 0 0;">▲ ${tr.warning_level.toUpperCase()}</p>` : ""}
+      ` : `<p style="font-size:12px;color:#718096;margin:0;">${lang === "bn" ? "কোনো রিডিং নেই" : "No recent reading"}</p>`}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:10px;color:#a0aec0;font-family:'Source Code Pro',monospace;">
+        ${station.danger_level != null ? `${tr.danger_level}: ${station.danger_level}m` : ""}
+        ${station.warning_level != null ? ` · ${tr.warning_level}: ${station.warning_level}m` : ""}
       </div>
     </div>
   `;
@@ -160,49 +135,57 @@ interface FloodMapProps {
   readings: RiverReading[];
   onUpazilaSelect: (upazila: string) => void;
   isLoading?: boolean;
+  lang?: Lang;
 }
 
-export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isLoading = false }: FloodMapProps) {
-  const mapDomRef    = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<LeafletMap | null>(null);
+export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isLoading = false, lang = "en" }: FloodMapProps) {
+  const mapDomRef       = useRef<HTMLDivElement>(null);
+  const mapRef          = useRef<LeafletMap | null>(null);
   const markerGroupRef  = useRef<LayerGroup | null>(null);
   const stationGroupRef = useRef<LayerGroup | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const tr = t[lang];
 
-  // Inject Leaflet CSS once
   useEffect(() => {
     if (document.getElementById("leaflet-css")) return;
     const link = document.createElement("link");
-    link.id = "leaflet-css";
-    link.rel = "stylesheet";
+    link.id   = "leaflet-css";
+    link.rel  = "stylesheet";
     link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
     document.head.appendChild(link);
   }, []);
 
-  // Initialize map once on mount
   useEffect(() => {
     if (!mapDomRef.current || mapRef.current) return;
 
     import("leaflet").then((L) => {
       if (!mapDomRef.current || mapRef.current) return;
 
+      const BANGLADESH_BOUNDS = L.latLngBounds(
+        L.latLng(20.59, 88.01),
+        L.latLng(26.63, 92.67)
+      );
+
       const map = L.map(mapDomRef.current, {
         zoomControl: false,
         attributionControl: true,
-      }).setView([23.685, 90.356], 7);
+        minZoom: 6,
+        maxZoom: 12,
+        maxBounds: BANGLADESH_BOUNDS.pad(0.15),
+        maxBoundsViscosity: 0.95,
+      });
+      map.fitBounds(BANGLADESH_BOUNDS, { padding: [20, 20] });
+      map.setMinZoom(6);
+      map.setMaxZoom(12);
 
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        {
-          attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com/attributions">CARTO</a>',
-          subdomains: "abcd",
-          maxZoom: 19,
-        }
-      ).addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+        maxZoom: 12,
+      }).addTo(map);
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      mapRef.current = map;
+      mapRef.current       = map;
       markerGroupRef.current  = L.layerGroup().addTo(map);
       stationGroupRef.current = L.layerGroup().addTo(map);
       setMapReady(true);
@@ -210,14 +193,13 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
 
     return () => {
       mapRef.current?.remove();
-      mapRef.current = null;
+      mapRef.current       = null;
       markerGroupRef.current  = null;
       stationGroupRef.current = null;
       setMapReady(false);
     };
   }, []);
 
-  // Update prediction markers
   useEffect(() => {
     if (!mapReady || !markerGroupRef.current) return;
 
@@ -229,36 +211,28 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
         const coords = LOCATION_MAP[p.upazila];
         if (!coords) return;
 
-        const color      = RISK_COLOR[p.risk_level];
-        const isCritical = p.risk_level === "critical";
-        const iconSize   = isCritical ? 36 : 24;
-
+        const cfg = MARKER_CONFIG[p.risk_level];
         const icon = L.divIcon({
-          html: createDiamondIcon(color, isCritical),
-          className: "",
-          iconSize:   [iconSize, iconSize],
-          iconAnchor: [iconSize / 2, iconSize / 2],
+          html:        createRiskMarkerHtml(p.risk_level),
+          className:   "",
+          iconSize:    [cfg.size, cfg.size],
+          iconAnchor:  [cfg.anchor, cfg.anchor],
+          popupAnchor: [0, cfg.popupY],
         });
 
+        const riskLabel = (t[lang][p.risk_level as keyof (typeof t)["en"]] as string) ?? p.risk_level.toUpperCase();
         const marker = L.marker([coords.lat, coords.lon], { icon });
-
         marker.bindTooltip(
-          `<strong style="letter-spacing:0.06em;">${p.upazila.toUpperCase()}</strong><br/>${p.risk_level.toUpperCase()} · ${p.risk_score}/100`,
-          { direction: "top", offset: [0, -(iconSize / 2 + 4)] }
+          `<strong>${p.upazila}</strong> — ${riskLabel} · ${p.risk_score}/100`,
+          { direction: "top", offset: [0, -(cfg.anchor + 4)] }
         );
-
-        marker.bindPopup(createPopupHTML(p), {
-          maxWidth: 320,
-          className: "flood-popup",
-        });
-
+        marker.bindPopup(createPopupHTML(p, lang), { maxWidth: 320 });
         marker.on("click", () => onUpazilaSelect(p.upazila));
         marker.addTo(markerGroupRef.current!);
       });
     });
-  }, [predictions, mapReady, onUpazilaSelect]);
+  }, [predictions, mapReady, onUpazilaSelect, lang]);
 
-  // Update station markers (small diamond, cyan/red)
   useEffect(() => {
     if (!mapReady || !stationGroupRef.current) return;
 
@@ -272,122 +246,80 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
           .filter((r) => r.station_id === station.station_id)
           .sort((a, b) => new Date(b.reading_time).getTime() - new Date(a.reading_time).getTime())[0];
 
-        const isAbove = latestReading && station.danger_level != null
-          && latestReading.water_level >= station.danger_level;
-        const color = isAbove ? "#ff1a1a" : "#00d4ff";
-
         const icon = L.divIcon({
-          html: `<div style="width:10px;height:10px;transform:rotate(45deg);border:1.5px solid ${color};background:${color}44;"></div>`,
-          className: "",
-          iconSize: [10, 10],
-          iconAnchor: [5, 5],
+          html:        `<div class="marker-gauge"></div>`,
+          className:   "",
+          iconSize:    [10, 10],
+          iconAnchor:  [5, 5],
+          popupAnchor: [0, -6],
         });
 
         const marker = L.marker([station.latitude, station.longitude], { icon });
-        marker.bindTooltip(station.station_name, { direction: "top", offset: [0, -8] });
-        marker.bindPopup(createStationPopupHTML(station, latestReading), {
-          maxWidth: 280,
-          className: "flood-popup",
-        });
+        marker.bindTooltip(station.station_name, { direction: "top", offset: [0, -7] });
+        marker.bindPopup(createStationPopupHTML(station, latestReading, lang), { maxWidth: 280 });
         marker.addTo(stationGroupRef.current!);
       });
     });
-  }, [stations, readings, mapReady]);
+  }, [stations, readings, mapReady, lang]);
 
   return (
-    <div className="relative h-full w-full">
-      <div ref={mapDomRef} className="h-full w-full" />
-
-      {/* Vignette overlay */}
-      <div style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        background: "radial-gradient(ellipse at center, transparent 50%, rgba(5,8,16,0.55) 100%)",
-        zIndex: 400,
-      }} />
+    <div style={{ position: "relative", height: "100%", width: "100%" }}>
+      <div ref={mapDomRef} style={{ height: "100%", width: "100%" }} />
 
       {/* Loading overlay */}
       {isLoading && (
         <div style={{
           position: "absolute", inset: 0, zIndex: 1000,
           display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(5,8,16,0.85)",
+          background: "rgba(245,247,250,0.85)",
           backdropFilter: "blur(4px)",
         }}>
           <div style={{ textAlign: "center" }}>
             <div style={{
-              width: 36, height: 36,
-              border: "2px solid var(--cyan)",
+              width: 32, height: 32,
+              border: "3px solid var(--bg-header)",
               borderTopColor: "transparent",
               borderRadius: "50%",
               animation: "spin 0.8s linear infinite",
-              margin: "0 auto 12px",
+              margin: "0 auto 10px",
             }} />
-            <p style={{
-              fontFamily: "var(--font-jetbrains-mono), monospace",
-              fontSize: 11, letterSpacing: "0.1em",
-              color: "var(--text-secondary)",
-            }}>
-              LOADING PREDICTIONS…
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+              {lang === "bn" ? "তথ্য লোড হচ্ছে…" : "Loading predictions…"}
             </p>
           </div>
         </div>
       )}
 
-      {/* Map legend */}
+      {/* Legend */}
       <div style={{
-        position: "absolute", bottom: 48, left: 12, zIndex: 900,
-        border: "1px solid var(--border-mid)",
-        background: "rgba(8,13,26,0.92)",
-        padding: "10px 12px",
-        borderRadius: 0,
+        position: "absolute", bottom: 84, right: 10, zIndex: 900,
+        background: "white",
+        border: "1px solid var(--border-light)",
+        borderRadius: 6,
+        padding: "10px 14px",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+        minWidth: 128,
       }}>
-        <p style={{
-          fontFamily: "var(--font-jetbrains-mono), monospace",
-          fontSize: 9, letterSpacing: "0.12em",
-          color: "var(--text-dim)",
-          marginBottom: 8,
-        }}>
-          RISK LEVEL
+        <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 8, fontFamily: "var(--font-source-code-pro), monospace" }}>
+          {lang === "bn" ? "ঝুঁকি স্তর" : "RISK LEVEL"}
         </p>
         {(["critical","high","medium","low"] as RiskLevel[]).map((r) => (
-          <div key={r} className="flex items-center gap-2" style={{ marginBottom: 6 }}>
-            <div style={{
-              width: 10, height: 10,
-              transform: "rotate(45deg)",
-              border: `1.5px solid ${RISK_COLOR[r]}`,
-              background: `${RISK_COLOR[r]}33`,
-              flexShrink: 0,
-            }} />
-            <span style={{
-              fontFamily: "var(--font-jetbrains-mono), monospace",
-              fontSize: 9, letterSpacing: "0.08em",
-              color: RISK_COLOR[r],
-              textTransform: "uppercase",
-            }}>{r}</span>
+          <div key={r} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 12, height: 12, borderRadius: "50%", background: RISK_COLOR[r], border: "2px solid white", boxShadow: "0 1px 3px rgba(0,0,0,0.15)", flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: "var(--text-secondary)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+              {(t[lang][r as keyof (typeof t)["en"]] as string) ?? r}
+            </span>
           </div>
         ))}
-        <div style={{ borderTop: "1px solid var(--border-dim)", marginTop: 6, paddingTop: 6 }}>
-          <div className="flex items-center gap-2">
-            <div style={{
-              width: 8, height: 8,
-              transform: "rotate(45deg)",
-              border: "1px solid #00d4ff",
-              background: "#00d4ff22",
-            }} />
-            <span style={{
-              fontFamily: "var(--font-jetbrains-mono), monospace",
-              fontSize: 9, letterSpacing: "0.08em",
-              color: "var(--text-secondary)",
-            }}>GAUGE STATION</span>
-          </div>
+        <div style={{ borderTop: "1px solid var(--border-light)", marginTop: 6, paddingTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#003d82", border: "2px solid white", flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+            {tr.gauge_station}
+          </span>
         </div>
       </div>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

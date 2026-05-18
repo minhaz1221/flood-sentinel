@@ -1,38 +1,56 @@
-function beep(
-  ctx: AudioContext,
-  freq: number,
-  start: number,
-  duration: number,
-  gain: number,
-) {
-  const osc = ctx.createOscillator();
-  const vol = ctx.createGain();
-  osc.connect(vol);
-  vol.connect(ctx.destination);
-  osc.frequency.value = freq;
-  osc.type = "sine";
-  vol.gain.setValueAtTime(gain, start);
-  vol.gain.exponentialRampToValueAtTime(0.001, start + duration);
-  osc.start(start);
-  osc.stop(start + duration + 0.02);
+export async function playAlarmSound(): Promise<void> {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+
+    const playBeep = (freq: number, start: number, duration: number, gain: number) => {
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.frequency.value = freq;
+      oscillator.type = "sine";
+      gainNode.gain.setValueAtTime(gain, ctx.currentTime + start);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+      oscillator.start(ctx.currentTime + start);
+      oscillator.stop(ctx.currentTime + start + duration + 0.05);
+    };
+
+    playBeep(880, 0, 0.2, 0.6);
+    playBeep(880, 0.35, 0.2, 0.6);
+    playBeep(880, 0.7, 0.2, 0.6);
+    playBeep(440, 1.1, 0.8, 0.4);
+  } catch (err) {
+    console.log("[AUDIO] Could not play alarm:", err);
+  }
 }
 
-export function playAlarmSound(): void {
+export async function playWarningSound(): Promise<void> {
   try {
-    const ctx = new AudioContext();
-    const t = ctx.currentTime;
-    beep(ctx, 880, t + 0.00, 0.2, 0.5);
-    beep(ctx, 880, t + 0.30, 0.2, 0.5);
-    beep(ctx, 880, t + 0.60, 0.2, 0.5);
-    beep(ctx, 440, t + 0.90, 0.6, 0.5);
-  } catch {}
-}
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    if (ctx.state === "suspended") await ctx.resume();
 
-export function playWarningSound(): void {
-  try {
-    const ctx = new AudioContext();
-    const t = ctx.currentTime;
-    beep(ctx, 660, t + 0.00, 0.2, 0.3);
-    beep(ctx, 660, t + 0.30, 0.2, 0.3);
-  } catch {}
+    const playBeep = (freq: number, start: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + duration + 0.05);
+    };
+
+    playBeep(660, 0, 0.25);
+    playBeep(660, 0.4, 0.25);
+  } catch (err) {
+    console.log("[AUDIO] Could not play warning:", err);
+  }
 }

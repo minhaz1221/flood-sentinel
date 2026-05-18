@@ -1,253 +1,157 @@
 "use client";
 
-import { useState } from "react";
-import { formatDistanceToNow } from "date-fns";
 import { RiskBadge } from "./RiskBadge";
-import { cn } from "@/lib/utils";
-import type { FloodPrediction, GeminiKeySignal } from "@/lib/types";
-
-const RISK_COLOR: Record<string, string> = {
-  low:      "var(--risk-low)",
-  medium:   "var(--risk-medium)",
-  high:     "var(--risk-high)",
-  critical: "var(--risk-critical)",
-};
-
-const RISK_GLOW: Record<string, string> = {
-  low:      "var(--glow-low)",
-  medium:   "var(--glow-medium)",
-  high:     "var(--glow-high)",
-  critical: "var(--glow-critical)",
-};
-
-const monoStyle: React.CSSProperties = {
-  fontFamily: "var(--font-jetbrains-mono), monospace",
-};
+import type { FloodPrediction, RiskLevel } from "@/lib/types";
+import type { Lang } from "@/lib/i18n/translations";
+import { t } from "@/lib/i18n/translations";
 
 interface UpazilaPanelProps {
   predictions: FloodPrediction[];
   selectedUpazila: string | null;
   onSelect: (upazila: string) => void;
   isLoading: boolean;
+  lang?: Lang;
+  filterLevel?: RiskLevel | null;
 }
 
-function SkeletonCard() {
-  return (
-    <div style={{
-      background: "var(--bg-surface)",
-      borderLeft: "3px solid var(--border-dim)",
-      padding: "12px",
-    }}>
-      <div className="skeleton" style={{ height: 12, width: "60%", marginBottom: 8 }} />
-      <div className="skeleton" style={{ height: 2, width: "100%", marginBottom: 8 }} />
-      <div className="skeleton" style={{ height: 10, width: "40%" }} />
-    </div>
-  );
+const RISK_RANK: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+
+const ROW_BG: Record<RiskLevel, string> = {
+  critical: "#fff0ef",
+  high:     "#fff8f0",
+  medium:   "white",
+  low:      "white",
+};
+
+const ROW_BORDER: Record<RiskLevel, string> = {
+  critical: "#c0392b",
+  high:     "#e67e22",
+  medium:   "#f39c12",
+  low:      "#27ae60",
+};
+
+function scoreColor(score: number): string {
+  if (score >= 80) return "var(--risk-critical)";
+  if (score >= 60) return "var(--risk-high)";
+  if (score >= 40) return "var(--risk-medium)";
+  return "var(--risk-low)";
 }
 
-function PredictionCard({
-  prediction,
-  isSelected,
-  onSelect,
-}: {
-  prediction: FloodPrediction;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const color = RISK_COLOR[prediction.risk_level];
-  const glow  = RISK_GLOW[prediction.risk_level];
-  const keySignals: GeminiKeySignal[] = Array.isArray(prediction.key_signals)
-    ? (prediction.key_signals as unknown as GeminiKeySignal[])
-    : [];
-
-  return (
-    <div
-      className="bracket-corner"
-      style={{
-        background: isSelected ? "var(--bg-raised)" : "var(--bg-surface)",
-        borderLeft: `3px solid ${color}`,
-        borderTop: "1px solid var(--border-dim)",
-        borderRight: "1px solid var(--border-dim)",
-        borderBottom: "1px solid var(--border-dim)",
-        padding: "10px 12px",
-        cursor: "pointer",
-        transition: "background 0.15s ease",
-        borderRadius: 0,
-        boxShadow: isSelected ? `inset 3px 0 12px ${color}22` : undefined,
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = "var(--bg-raised)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = isSelected ? "var(--bg-raised)" : "var(--bg-surface)";
-      }}
-      onClick={onSelect}
-    >
-      {/* Row 1: upazila name + score */}
-      <div className="flex items-baseline justify-between gap-2 mb-1">
-        <span style={{
-          fontFamily: "var(--font-dm-sans), sans-serif",
-          fontSize: 13,
-          fontWeight: 600,
-          color: "var(--text-primary)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}>
-          {prediction.upazila}
-        </span>
-        <span style={{ ...monoStyle, fontSize: 11, color, flexShrink: 0 }}>
-          {prediction.risk_score}/100
-        </span>
-      </div>
-
-      {/* Row 2: district + risk level */}
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span style={{ ...monoStyle, fontSize: 10, color: "var(--text-secondary)" }}>
-          {prediction.district}
-        </span>
-        <RiskBadge risk_level={prediction.risk_level} size="sm" />
-      </div>
-
-      {/* Row 3: progress bar */}
-      <div style={{ height: 2, background: "var(--border-dim)", marginBottom: 8, position: "relative" }}>
-        <div style={{
-          position: "absolute",
-          height: "100%",
-          width: `${prediction.risk_score}%`,
-          background: color,
-          boxShadow: glow,
-          transition: "width 0.4s ease",
-        }} />
-      </div>
-
-      {/* Row 4: 48h / 72h outlook + expand */}
-      <div className="flex items-center gap-2">
-        <span style={{ ...monoStyle, fontSize: 10, color: "var(--text-dim)" }}>48H</span>
-        {prediction.risk_48h && <RiskBadge risk_level={prediction.risk_48h} size="sm" />}
-        <span style={{ ...monoStyle, fontSize: 10, color: "var(--text-dim)", marginLeft: 4 }}>72H</span>
-        {prediction.risk_72h && <RiskBadge risk_level={prediction.risk_72h} size="sm" />}
-        <button
-          style={{
-            ...monoStyle,
-            marginLeft: "auto",
-            fontSize: 10,
-            color: "var(--text-dim)",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 0,
-            letterSpacing: "0.05em",
-          }}
-          onClick={(e) => { e.stopPropagation(); setExpanded((x) => !x); }}
-        >
-          {expanded ? "▲ LESS" : "▼ MORE"}
-        </button>
-      </div>
-
-      {/* Expanded reasoning */}
-      {expanded && (
-        <div style={{
-          borderTop: "1px solid var(--border-dim)",
-          marginTop: 10,
-          paddingTop: 10,
-        }}>
-          {keySignals.slice(0, 3).map((sig, i) => (
-            <div key={i} style={{ ...monoStyle, fontSize: 10, color: "var(--text-secondary)", marginBottom: 4 }}>
-              <span style={{ color: "var(--text-dim)" }}>{sig.label}:</span>{" "}
-              <span style={{ color }}>
-                {sig.value}{sig.unit ? ` ${sig.unit}` : ""}
-              </span>
-            </div>
-          ))}
-          <p style={{
-            fontFamily: "var(--font-dm-sans), sans-serif",
-            fontSize: 11,
-            color: "var(--text-secondary)",
-            lineHeight: 1.6,
-            margin: "8px 0 6px",
-          }}>
-            {prediction.reasoning}
-          </p>
-          {prediction.reasoning_bn && (
-            <p style={{
-              fontFamily: "system-ui, sans-serif",
-              fontSize: 11,
-              color: "var(--text-dim)",
-              lineHeight: 1.6,
-              borderLeft: `2px solid ${color}44`,
-              paddingLeft: 8,
-              margin: 0,
-              fontStyle: "italic",
-            }}>
-              {prediction.reasoning_bn}
-            </p>
-          )}
-          <p style={{ ...monoStyle, fontSize: 9, color: "var(--text-dim)", marginTop: 8 }}>
-            {formatDistanceToNow(new Date(prediction.predicted_at), { addSuffix: true })}
-          </p>
-        </div>
-      )}
-    </div>
-  );
+function getTrend(p: FloodPrediction): string | null {
+  const now = RISK_RANK[p.risk_level];
+  const future = p.risk_72h ? RISK_RANK[p.risk_72h] : (p.risk_48h ? RISK_RANK[p.risk_48h] : now);
+  if (future > now) return "▲";
+  if (future < now) return "▼";
+  return null;
 }
 
-export function UpazilaPanel({ predictions, selectedUpazila, onSelect, isLoading }: UpazilaPanelProps) {
+export function UpazilaPanel({ predictions, selectedUpazila, onSelect, isLoading, lang = "en", filterLevel }: UpazilaPanelProps) {
   const sorted = [...predictions].sort((a, b) => b.risk_score - a.risk_score);
+  const filtered = filterLevel ? sorted.filter((p) => p.risk_level === filterLevel) : sorted;
+  const tr = t[lang];
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "var(--bg-void)" }}>
-      {/* Header */}
-      <div style={{
-        borderBottom: "1px solid var(--border-dim)",
-        padding: "10px 14px",
-        background: "var(--bg-surface)",
-        flexShrink: 0,
-      }}>
-        <div className="flex items-baseline justify-between">
-          <span style={{
-            fontFamily: "var(--font-bebas-neue), sans-serif",
-            fontSize: 18,
-            letterSpacing: "3px",
-            color: "var(--text-primary)",
-          }}>
-            RISK ZONES
-          </span>
-          <span style={{ ...monoStyle, fontSize: 11, color: "var(--cyan)" }}>
-            {predictions.length} ZONES
-          </span>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-white)" }}>
+      {/* Table header */}
+      <div style={{ background: "var(--bg-header)", color: "white", padding: "10px 14px", flexShrink: 0 }}>
+        <p style={{ fontFamily: "var(--font-merriweather), serif", fontSize: 14, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>
+          {tr.risk_zones}
+          {filterLevel && (
+            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, opacity: 0.85, fontFamily: "var(--font-source-code-pro), monospace" }}>
+              · {filterLevel.toUpperCase()}
+            </span>
+          )}
+        </p>
+        <p style={{ fontFamily: "var(--font-noto-sans-bengali), sans-serif", fontSize: 11, opacity: 0.8, margin: "3px 0 0" }}>
+          AI-generated assessment — updated every hour
+          {filtered.length > 0 && ` · ${filtered.length} ${tr.zones}`}
+        </p>
       </div>
 
-      {/* Card list */}
-      <div className="flex-1 overflow-y-auto" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      {/* Data table */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
         {isLoading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} style={{ borderBottom: "1px solid var(--border-dim)" }}>
-              <SkeletonCard />
-            </div>
-          ))
-        ) : sorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-center px-4">
-            <span style={{ ...monoStyle, fontSize: 28, color: "var(--border-mid)" }}>◆</span>
-            <p style={{ ...monoStyle, fontSize: 11, color: "var(--text-dim)", marginTop: 12, letterSpacing: "0.1em" }}>
-              NO PREDICTIONS
+          <div style={{ padding: 12 }}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} style={{ height: 40, background: "#e8edf2", marginBottom: 4, borderRadius: 2, opacity: 1 - i * 0.15 }} />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 120, padding: "0 16px", textAlign: "center" }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+              {filterLevel ? (lang === "bn" ? "এই ফিল্টারে কোনো তথ্য নেই" : "No zones match this filter") : tr.no_predictions}
             </p>
-            <p style={{ ...monoStyle, fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>
-              PRESS SYNC TO GENERATE
-            </p>
+            {!filterLevel && (
+              <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+                {tr.sync_to_generate}
+              </p>
+            )}
           </div>
         ) : (
-          sorted.map((p) => (
-            <div key={p.id} style={{ borderBottom: "1px solid var(--border-dim)" }}>
-              <PredictionCard
-                prediction={p}
-                isSelected={selectedUpazila === p.upazila}
-                onSelect={() => onSelect(p.upazila)}
-              />
-            </div>
-          ))
+          <table className="gov-table" style={{ fontSize: 13 }}>
+            <colgroup>
+              <col style={{ width: "auto" }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 60 }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>{tr.upazila}</th>
+                <th>{lang === "en" ? "Risk" : "ঝুঁকি"}</th>
+                <th style={{ textAlign: "center" }}>{lang === "en" ? "Score" : "স্কোর"}</th>
+                <th style={{ textAlign: "center" }}>{lang === "en" ? "48h" : "৪৮ঘ"}</th>
+                <th style={{ textAlign: "center" }}>{lang === "en" ? "72h" : "৭২ঘ"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p) => {
+                const trend = getTrend(p);
+                const trendColor = trend === "▲" ? "#c0392b" : "#27ae60";
+                return (
+                  <tr
+                    key={p.id}
+                    onClick={() => onSelect(p.upazila)}
+                    className={selectedUpazila === p.upazila ? "selected" : ""}
+                    style={{
+                      minHeight: 44,
+                      background: selectedUpazila === p.upazila ? undefined : ROW_BG[p.risk_level],
+                      borderLeft: `4px solid ${ROW_BORDER[p.risk_level]}`,
+                    }}
+                  >
+                    <td style={{ padding: "8px 10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.3, color: "var(--text-primary)" }}>
+                            {p.upazila}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{p.district}</div>
+                        </div>
+                        {trend && (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: trendColor, flexShrink: 0 }} title={trend === "▲" ? "Risk increasing" : "Risk decreasing"}>
+                            {trend}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: "8px 10px" }}>
+                      <RiskBadge risk_level={p.risk_level} size="sm" lang={lang} />
+                    </td>
+                    <td style={{ padding: "8px 10px", fontFamily: "var(--font-source-code-pro), monospace", fontWeight: 700, color: scoreColor(p.risk_score), textAlign: "center", fontSize: 13 }}>
+                      {p.risk_score}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "center" }}>
+                      {p.risk_48h && <RiskBadge risk_level={p.risk_48h} size="sm" lang={lang} />}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "center" }}>
+                      {p.risk_72h && <RiskBadge risk_level={p.risk_72h} size="sm" lang={lang} />}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

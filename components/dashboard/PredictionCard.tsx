@@ -1,5 +1,5 @@
 import { MapPin, Clock } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { safeFormatDate } from "@/lib/utils/dateFormat";
 import { RiskBadge } from "./RiskBadge";
 import type { FloodPrediction } from "@/lib/types";
 
@@ -25,7 +25,7 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
       <div className="flex items-center gap-4 text-xs text-[#64748b]">
         <span className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {formatDistanceToNow(new Date(prediction.predicted_at), { addSuffix: true })}
+          {safeFormatDate(prediction.predicted_at)}
         </span>
         {prediction.risk_48h && (
           <span className="flex items-center gap-1">

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   LineChart,
   Line,
@@ -10,8 +11,9 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
-import { format, parseISO } from "date-fns";
+import { safeFormat } from "@/lib/utils/dateFormat";
 import type { RiverReading } from "@/lib/types";
+import type { Lang } from "@/lib/i18n/translations";
 
 interface RiverChartProps {
   stationId: string;
@@ -19,6 +21,8 @@ interface RiverChartProps {
   readings: RiverReading[];
   dangerLevel: number | null;
   warningLevel: number | null;
+  lang?: Lang;
+  isHistoricalMode?: boolean;
 }
 
 interface TooltipEntry { value?: number }
@@ -27,136 +31,132 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   if (!active || !payload?.length) return null;
   const value = payload[0]?.value;
   return (
-    <div className="rounded-lg border border-[#1e2d4a] bg-[#0f1629] px-3 py-2 text-xs shadow-xl">
-      <p className="text-[#64748b] mb-1">{label}</p>
-      <p className="text-[#3b82f6] font-mono font-semibold">
+    <div style={{
+      border: "1px solid var(--border-medium)",
+      background: "white",
+      padding: "8px 12px",
+      fontSize: 12,
+      boxShadow: "var(--shadow-sm)",
+      borderRadius: 2,
+    }}>
+      <p style={{ color: "var(--text-muted)", marginBottom: 4 }}>{label}</p>
+      <p style={{ color: "#003d82", fontFamily: "var(--font-source-code-pro), monospace", fontWeight: 600 }}>
         {typeof value === "number" ? value.toFixed(2) : value} m
       </p>
     </div>
   );
 }
 
-export function RiverChart({
-  stationId,
-  stationName,
-  readings,
-  dangerLevel,
-  warningLevel,
-}: RiverChartProps) {
-  const stationReadings = readings
-    .filter((r) => r.station_id === stationId)
+export function RiverChart({ stationId, stationName, readings, dangerLevel, warningLevel, lang = "en", isHistoricalMode = false }: RiverChartProps) {
+  const [historicalReadings, setHistoricalReadings] = useState<RiverReading[]>([]);
+
+  useEffect(() => {
+    if (!isHistoricalMode || !stationId) return;
+    fetch(`/api/readings?station_id=${encodeURIComponent(stationId)}&mode=historical`)
+      .then((r) => r.json())
+      .then((d) => setHistoricalReadings(d.readings ?? []))
+      .catch(console.error);
+  }, [isHistoricalMode, stationId]);
+
+  const stationReadings = (isHistoricalMode ? historicalReadings : readings.filter((r) => r.station_id === stationId))
+    .slice()
     .sort((a, b) => new Date(a.reading_time).getTime() - new Date(b.reading_time).getTime());
 
   const data = stationReadings.map((r) => ({
-    time: format(parseISO(r.reading_time), "MMM d HH:mm"),
+    time: safeFormat(r.reading_time, "MMM d HH:mm"),
     level: r.water_level,
   }));
 
   const currentLevel = stationReadings.at(-1)?.water_level ?? 0;
-  const isAboveDanger = dangerLevel !== null && currentLevel >= dangerLevel;
+  const isAboveDanger  = dangerLevel  !== null && currentLevel >= dangerLevel;
   const isAboveWarning = warningLevel !== null && currentLevel >= warningLevel;
 
-  const bgTint = isAboveDanger
-    ? "rgba(239,68,68,0.04)"
-    : isAboveWarning
-    ? "rgba(249,115,22,0.04)"
-    : "transparent";
-
-  const yMin =
-    data.length > 0
-      ? Math.max(0, Math.min(...data.map((d) => d.level)) - 0.5)
-      : 0;
-  const yMax =
-    data.length > 0
-      ? Math.max(
-          ...data.map((d) => d.level),
-          dangerLevel ?? 0,
-          warningLevel ?? 0
-        ) + 0.5
-      : 10;
+  const yMin = data.length > 0 ? Math.max(0, Math.min(...data.map((d) => d.level)) - 0.5) : 0;
+  const yMax = data.length > 0
+    ? Math.max(...data.map((d) => d.level), dangerLevel ?? 0, warningLevel ?? 0) + 0.5
+    : 10;
 
   if (data.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-[#64748b]">
-        No readings for this station in the selected period.
+      <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+        {lang === "bn" ? "এই স্টেশনে কোনো রিডিং নেই" : "No readings available for this station"}
       </div>
     );
   }
 
+  const dangerLabel = lang === "bn" ? "বিপদ সীমা" : "Danger";
+  const warningLabel = lang === "bn" ? "সতর্কতা সীমা" : "Warning";
+
   return (
-    <div className="h-full w-full relative" style={{ background: bgTint }}>
+    <div style={{ height: "100%", width: "100%", background: "white", position: "relative" }}>
       {stationName && (
-        <div className="absolute top-2 left-3 z-10 text-xs text-[#64748b]">
-          <span className="font-semibold text-[#94a3b8]">{stationName}</span>
+        <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+            {stationName}
+          </span>
           {isAboveDanger && (
-            <span className="ml-2 text-red-400 font-mono text-[10px] animate-pulse">
-              ▲ ABOVE DANGER
+            <span style={{ fontSize: 11, color: "#c0392b", fontWeight: 700, fontFamily: "var(--font-source-code-pro), monospace" }}>
+              ▲ {lang === "bn" ? "বিপদ সীমার উপরে" : "ABOVE DANGER"}
             </span>
           )}
           {!isAboveDanger && isAboveWarning && (
-            <span className="ml-2 text-orange-400 font-mono text-[10px]">▲ ABOVE WARNING</span>
+            <span style={{ fontSize: 11, color: "#e67e22", fontWeight: 700, fontFamily: "var(--font-source-code-pro), monospace" }}>
+              ▲ {lang === "bn" ? "সতর্কতা সীমার উপরে" : "ABOVE WARNING"}
+            </span>
           )}
         </div>
       )}
+      {isHistoricalMode && (
+        <div style={{ position: "absolute", bottom: 6, left: 12, zIndex: 10 }}>
+          <span style={{ fontSize: 10, color: "#92400E", background: "#FEF3C7", border: "1px solid #F59E0B", borderRadius: 3, padding: "2px 8px", fontFamily: "var(--font-source-code-pro), monospace" }}>
+            Showing historical data: June 13–20, 2022 — 2022 Sylhet Mega-Flood
+          </span>
+        </div>
+      )}
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={data}
-          margin={{ top: 28, right: 20, left: 0, bottom: 4 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
+        <LineChart data={data} margin={{ top: 28, right: 60, left: 0, bottom: isHistoricalMode ? 22 : 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
           <XAxis
             dataKey="time"
-            tick={{ fill: "#64748b", fontSize: 10 }}
+            tick={{ fill: "#718096", fontSize: 10, fontFamily: "var(--font-source-code-pro)" }}
             tickLine={false}
-            axisLine={{ stroke: "#1e2d4a" }}
+            axisLine={{ stroke: "#e2e8f0" }}
             interval="preserveStartEnd"
           />
           <YAxis
             domain={[yMin, yMax]}
-            tick={{ fill: "#64748b", fontSize: 10 }}
+            tick={{ fill: "#718096", fontSize: 10, fontFamily: "var(--font-source-code-pro)" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v) => `${(v as number).toFixed(1)}m`}
             width={42}
           />
           <Tooltip content={<CustomTooltip />} />
-
           {dangerLevel !== null && (
             <ReferenceLine
               y={dangerLevel}
-              stroke="#ef4444"
+              stroke="#c0392b"
               strokeDasharray="6 3"
               strokeWidth={1.5}
-              label={{
-                value: `Danger ${dangerLevel}m`,
-                fill: "#ef4444",
-                fontSize: 10,
-                position: "right",
-              }}
+              label={{ value: `${dangerLabel} ${dangerLevel}m`, fill: "#c0392b", fontSize: 10, position: "right" }}
             />
           )}
           {warningLevel !== null && (
             <ReferenceLine
               y={warningLevel}
-              stroke="#f97316"
+              stroke="#e67e22"
               strokeDasharray="6 3"
               strokeWidth={1.5}
-              label={{
-                value: `Warning ${warningLevel}m`,
-                fill: "#f97316",
-                fontSize: 10,
-                position: "right",
-              }}
+              label={{ value: `${warningLabel} ${warningLevel}m`, fill: "#e67e22", fontSize: 10, position: "right" }}
             />
           )}
-
           <Line
             type="monotone"
             dataKey="level"
-            stroke="#3b82f6"
+            stroke="#003d82"
             strokeWidth={2}
             dot={false}
-            activeDot={{ r: 4, fill: "#3b82f6", stroke: "#0f1629", strokeWidth: 2 }}
+            activeDot={{ r: 4, fill: "#003d82", stroke: "white", strokeWidth: 2 }}
           />
         </LineChart>
       </ResponsiveContainer>

@@ -1,26 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { FloodPrediction } from "@/lib/types";
+import { useState, useEffect } from "react";
+import type { FloodPrediction, RiskLevel } from "@/lib/types";
+import type { Lang } from "@/lib/i18n/translations";
+import { t } from "@/lib/i18n/translations";
 
 interface StatsBarProps {
   predictions: FloodPrediction[];
-  lastSyncTime: Date | null;
-  isSyncing: boolean;
-  onSync: () => void;
+  lang?: Lang;
+  lastSyncTime?: Date | null;
+  onFilter?: (level: RiskLevel | null) => void;
+  activeFilter?: RiskLevel | null;
 }
 
-const RISK_COLORS = {
-  critical: "var(--risk-critical)",
-  high:     "var(--risk-high)",
-  medium:   "var(--risk-medium)",
-  low:      "var(--risk-low)",
+const RISK_COLORS: Record<string, string> = {
+  critical: "#c0392b",
+  high:     "#e67e22",
+  medium:   "#f39c12",
+  low:      "#27ae60",
 };
-
 const RISK_LEVELS = ["critical", "high", "medium", "low"] as const;
 
-export function StatsBar({ predictions, lastSyncTime, isSyncing, onSync }: StatsBarProps) {
-  const [countdown, setCountdown] = useState(300);
+export function StatsBar({ predictions, lang = "en", lastSyncTime, onFilter, activeFilter }: StatsBarProps) {
+  const tr = t[lang];
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const counts = {
     critical: predictions.filter((p) => p.risk_level === "critical").length,
@@ -29,90 +37,60 @@ export function StatsBar({ predictions, lastSyncTime, isSyncing, onSync }: Stats
     low:      predictions.filter((p) => p.risk_level === "low").length,
   };
 
-  useEffect(() => {
-    if (!lastSyncTime) return;
-    const elapsed = Math.floor((Date.now() - lastSyncTime.getTime()) / 1000);
-    setCountdown(Math.max(0, 300 - elapsed));
-    const interval = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
-    return () => clearInterval(interval);
-  }, [lastSyncTime]);
+  const hasAny = Object.values(counts).some((c) => c > 0);
 
-  const formatCountdown = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  };
-
-  const monoStyle: React.CSSProperties = {
-    fontFamily: "var(--font-jetbrains-mono), monospace",
-    fontSize: 11,
-    letterSpacing: "0.05em",
-  };
+  const nextSyncSecs = lastSyncTime
+    ? Math.max(0, 3600 - Math.floor((now.getTime() - lastSyncTime.getTime()) / 1000))
+    : null;
+  const nextSyncStr = nextSyncSecs != null
+    ? `${Math.floor(nextSyncSecs / 60)}:${String(nextSyncSecs % 60).padStart(2, "0")}`
+    : null;
 
   return (
-    <div className="flex items-center gap-4 px-3 overflow-x-auto min-w-0">
-      {/* Risk readout */}
-      <div className="flex items-center gap-1 shrink-0" style={monoStyle}>
-        {RISK_LEVELS.map((level, i) => {
-          const count = counts[level];
-          if (count === 0) return null;
-          return (
-            <span key={level} className="flex items-center gap-1">
-              {i > 0 && <span style={{ color: "var(--text-dim)", marginLeft: 4, marginRight: 4 }}>|</span>}
-              <span style={{ color: RISK_COLORS[level] }}>■</span>
-              <span style={{ color: RISK_COLORS[level] }}>{count}</span>
-              <span style={{ color: "var(--text-secondary)", textTransform: "uppercase" }}>{level}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      {!hasAny ? (
+        <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+          {lang === "bn" ? "কোনো তথ্য নেই" : "No data"}
+        </span>
+      ) : RISK_LEVELS.map((level) => {
+        const count = counts[level];
+        if (count === 0) return null;
+        const label = tr[level as keyof typeof tr] as string;
+        const isActive = activeFilter === level;
+        return (
+          <button
+            key={level}
+            onClick={() => onFilter?.(isActive ? null : level as RiskLevel)}
+            title={onFilter ? `Filter by ${label}` : undefined}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              background: isActive ? RISK_COLORS[level] + "22" : "transparent",
+              border: isActive ? `1px solid ${RISK_COLORS[level]}` : "1px solid transparent",
+              borderRadius: 2, padding: "2px 6px",
+              cursor: onFilter ? "pointer" : "default",
+              transition: "all 0.15s",
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: RISK_COLORS[level], display: "block", flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: RISK_COLORS[level], fontFamily: "var(--font-source-code-pro), monospace" }}>
+              {count}
             </span>
-          );
-        })}
-        {predictions.length === 0 && (
-          <span style={{ color: "var(--text-dim)" }}>NO DATA</span>
-        )}
-      </div>
+            <span style={{ fontSize: 12, color: "var(--text-secondary)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+              {label}
+            </span>
+          </button>
+        );
+      })}
 
-      {/* Countdown */}
-      {lastSyncTime && countdown > 0 && (
-        <span className="hidden md:block shrink-0" style={{ ...monoStyle, color: "var(--text-dim)" }}>
-          NEXT{" "}
-          <span style={{ color: "var(--text-secondary)" }}>{formatCountdown(countdown)}</span>
+      {nextSyncStr && (
+        <span style={{
+          fontSize: 11, color: "var(--text-muted)",
+          fontFamily: "var(--font-source-code-pro), monospace",
+          whiteSpace: "nowrap", borderLeft: "1px solid var(--border-light)", paddingLeft: 10,
+        }}>
+          {lang === "bn" ? "পরবর্তী: " : "Next sync: "}{nextSyncStr}
         </span>
       )}
-
-      {/* Sync button */}
-      <button
-        onClick={onSync}
-        disabled={isSyncing}
-        className="ml-auto shrink-0"
-        style={{
-          ...monoStyle,
-          fontSize: 11,
-          fontWeight: 600,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          color: isSyncing ? "var(--text-dim)" : "var(--cyan)",
-          border: "1px solid",
-          borderColor: isSyncing ? "var(--border-dim)" : "var(--cyan)",
-          background: isSyncing ? "transparent" : "var(--cyan-dim)",
-          padding: "4px 12px",
-          borderRadius: 0,
-          cursor: isSyncing ? "not-allowed" : "pointer",
-          transition: "all 0.15s ease",
-        }}
-        onMouseEnter={(e) => {
-          if (!isSyncing) {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--cyan)";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--bg-void)";
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isSyncing) {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--cyan-dim)";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--cyan)";
-          }
-        }}
-      >
-        {isSyncing ? "SYNCING…" : "SYNC"}
-      </button>
     </div>
   );
 }
