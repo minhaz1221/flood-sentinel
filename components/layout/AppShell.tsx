@@ -210,19 +210,21 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           {/* Mute */}
           <button
             onClick={toggleMute}
-            title={isMuted ? "Unmute" : "Mute"}
+            title={isMuted ? "Audio muted — visual alerts active" : "Mute alerts"}
             style={{
               background: "none",
               border: "1px solid var(--border-medium)",
               borderRadius: 4,
-              color: isMuted ? "#c0392b" : "#718096",
+              color: isMuted ? "#718096" : "#1a56a0",
               padding: "5px 8px",
               cursor: "pointer",
               display: "flex", alignItems: "center",
+              fontSize: 15,
+              lineHeight: 1,
               transition: "color 0.15s",
             }}
           >
-            {isMuted ? <VolumeOffIcon size={15} /> : <VolumeIcon size={15} />}
+            {isMuted ? "🔇" : "🔊"}
           </button>
 
           {/* Notifications */}

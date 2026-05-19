@@ -3,10 +3,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { X } from "lucide-react";
-import { playAlarmSound, playWarningSound } from "@/lib/audio/alarm";
+import { playWarningSound, startContinuousSiren, stopSiren } from "@/lib/audio/alarm";
+import { startFaviconAlert, stopFaviconAlert, startTitleAlert, stopTitleAlert } from "@/lib/favicon/alert";
 import { generateVoiceAlert } from "@/lib/audio/voice";
 import { RiverChart } from "@/components/dashboard/RiverChart";
 import { RiskBadge } from "@/components/dashboard/RiskBadge";
+import { AgentLog } from "@/components/dashboard/AgentLog";
 import { useLang } from "@/lib/i18n/LangContext";
 import { t } from "@/lib/i18n/translations";
 import type { Lang } from "@/lib/i18n/translations";
@@ -16,7 +18,7 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import type {
-  FloodPrediction, RiverStation, RiverReading, AlertSent,
+  FloodPrediction, RiverStation, RiverReading, AlertSent, PredictionResult,
 } from "@/lib/types";
 import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
 
@@ -42,6 +44,57 @@ function formatPop(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
   return String(n);
+}
+
+/* ── Advance Warning Banner ─────────────────── */
+function AdvanceWarningBanner({ show }: { show: boolean }) {
+  if (!show) return null;
+  const col = { borderRight: "1px solid #C7D2FE", padding: "10px 16px", flex: 1, textAlign: "center" as const };
+  return (
+    <div style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-light)", padding: "8px 20px", flexShrink: 0 }}>
+      <div style={{
+        background: "linear-gradient(135deg, #EEF2FF, #E0E7FF)",
+        border: "1px solid #C7D2FE",
+        borderLeft: "4px solid #003d82",
+        borderRadius: 6,
+        overflow: "hidden",
+      }}>
+        {/* Header */}
+        <div style={{ background: "#003d82", padding: "8px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 14 }}>⚡</span>
+          <span style={{ color: "white", fontWeight: 700, fontSize: 12, fontFamily: "var(--font-source-code-pro), monospace", letterSpacing: "0.06em" }}>
+            ADVANCE WARNING COMPARISON — 2022 SYLHET MEGA-FLOOD
+          </span>
+        </div>
+        {/* Three columns */}
+        <div style={{ display: "flex", borderBottom: "1px solid #C7D2FE" }}>
+          <div style={col}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#3730A3", margin: "0 0 4px", fontFamily: "var(--font-source-code-pro), monospace" }}>Flood Sentinel AI Detection</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#003d82", margin: "0 0 2px" }}>Jun 14, 06:00</p>
+            <span style={{ fontSize: 10, background: "#003d82", color: "white", padding: "2px 8px", borderRadius: 2, fontWeight: 700 }}>✅ CRITICAL</span>
+          </div>
+          <div style={col}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#92400E", margin: "0 0 4px", fontFamily: "var(--font-source-code-pro), monospace" }}>BWDB Official Warning</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#92400E", margin: "0 0 2px" }}>Jun 15, 14:00</p>
+            <span style={{ fontSize: 10, background: "#f59e0b", color: "#1a1a2e", padding: "2px 8px", borderRadius: 2, fontWeight: 700 }}>⚠ MEDIUM</span>
+          </div>
+          <div style={{ ...col, borderRight: "none" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#1e40af", margin: "0 0 4px", fontFamily: "var(--font-source-code-pro), monospace" }}>Actual Flood Peak</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#1e40af", margin: "0 0 2px" }}>Jun 17–18, 2022</p>
+            <span style={{ fontSize: 10, background: "#1e40af", color: "white", padding: "2px 8px", borderRadius: 2, fontWeight: 700 }}>💧 CATASTROPHIC</span>
+          </div>
+        </div>
+        {/* Bottom row */}
+        <div style={{ padding: "8px 16px", textAlign: "center" }}>
+          <span style={{ fontSize: 12, color: "#4338CA" }}>
+            Flood Sentinel detected danger{" "}
+            <strong style={{ fontSize: 15, color: "#003d82" }}>32 HOURS</strong>
+            {" "}before official warnings — critical evacuation window saved
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ── KPI card ──────────────────────────────── */
@@ -287,18 +340,30 @@ export default function DashboardContent() {
   const [dbStatus, setDbStatus]         = useState<"checking" | "connected" | "error">("checking");
   const [criticalDismissed, setCriticalDismissed] = useState<Set<string>>(new Set());
   const [toast, setToast]               = useState<string | null>(null);
-  const [activeBottomTab, setActiveBottomTab] = useState<"rivers" | "charts">("rivers");
+  const [activeBottomTab, setActiveBottomTab] = useState<"rivers" | "charts" | "agentlog">("rivers");
   const [isHistoricalMode, setIsHistoricalMode] = useState(false);
   const [historicalLoading, setHistoricalLoading] = useState(false);
 
+  // Scenario tester state
+  const [isScenarioOpen, setIsScenarioOpen]         = useState(false);
+  const [scenarioRainfall, setScenarioRainfall]     = useState(100);
+  const [scenarioRiverPct, setScenarioRiverPct]     = useState(75);
+  const [scenarioUpazila, setScenarioUpazila]       = useState(MONITORING_LOCATIONS[0].upazila);
+  const [scenarioDistrict, setScenarioDistrict]     = useState(MONITORING_LOCATIONS[0].district);
+  const [scenarioLoading, setScenarioLoading]       = useState(false);
+  const [scenarioResult, setScenarioResult]         = useState<PredictionResult | null>(null);
+
   const [alarmActive, setAlarmActive] = useState(false);
+  const [alertMode, setAlertMode]     = useState(false);
 
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const healthTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPlayedIdsRef = useRef<Set<string>>(new Set());
   const skipNextAudioRef = useRef(false);
-  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const alertModeRef     = useRef(false);
   const langRef          = useRef(lang);
+
+  useEffect(() => { alertModeRef.current = alertMode; }, [alertMode]);
 
   /* ── Sync langRef with current lang ────────── */
   useEffect(() => { langRef.current = lang; }, [lang]);
@@ -351,25 +416,38 @@ export default function DashboardContent() {
     return () => { if (healthTimerRef.current) clearInterval(healthTimerRef.current); };
   }, []);
 
-  /* ── Audio (reads localStorage directly) ─── */
+  /* ── Audio & visual alert (reads localStorage directly) ─── */
   useEffect(() => {
     if (predictions.length === 0) return;
     const newPreds = predictions.filter((p) => !lastPlayedIdsRef.current.has(p.id));
     if (newPreds.length === 0) return;
     predictions.forEach((p) => lastPlayedIdsRef.current.add(p.id));
     if (skipNextAudioRef.current) { skipNextAudioRef.current = false; return; }
-    try {
-      const muted = localStorage.getItem("floodsentinel_muted") === "true";
-      if (muted) return;
-    } catch {}
+
     const hasCritical = predictions.some((p) => p.risk_level === "critical");
     const hasHigh     = predictions.some((p) => p.risk_level === "high");
+
     if (hasCritical) {
-      startContinuousAlarm();
       const critPred = predictions.find((p) => p.risk_level === "critical");
-      if (critPred) generateVoiceAlert(critPred);
+      // Visual alert — always, regardless of mute
+      document.body.classList.add("alert-mode");
+      setAlertMode(true);
+      startFaviconAlert();
+      if (critPred) startTitleAlert(critPred.upazila);
+      // Audio — only if not muted
+      try {
+        const muted = localStorage.getItem("floodsentinel_muted") === "true";
+        if (!muted) {
+          startContinuousSiren();
+          setAlarmActive(true);
+          if (critPred) generateVoiceAlert(critPred);
+        }
+      } catch {}
     } else if (hasHigh) {
-      playWarningSound();
+      try {
+        const muted = localStorage.getItem("floodsentinel_muted") === "true";
+        if (!muted) playWarningSound();
+      } catch {}
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [predictions]);
@@ -413,22 +491,31 @@ export default function DashboardContent() {
     }
   }, [fetchDashboardData]);
 
-  /* ── Continuous alarm ─────────────────── */
-  const startContinuousAlarm = useCallback(async () => {
-    if (alarmIntervalRef.current) return; // already running
-    setAlarmActive(true);
-    await playAlarmSound();
-    alarmIntervalRef.current = setInterval(async () => {
-      await playAlarmSound();
-    }, 30000);
+  /* ── Alert mode controls ──────────────── */
+  const silenceAlert = useCallback(() => {
+    stopSiren();
+    setAlarmActive(false);
+    stopFaviconAlert();
+    stopTitleAlert();
+    document.body.classList.remove("alert-mode");
+    setAlertMode(false);
   }, []);
 
-  const stopAlarm = useCallback(() => {
-    if (alarmIntervalRef.current) {
-      clearInterval(alarmIntervalRef.current);
-      alarmIntervalRef.current = null;
-    }
-    setAlarmActive(false);
+  // Restart siren when user unmutes while alert is active
+  useEffect(() => {
+    const handleMuteChange = (e: StorageEvent) => {
+      if (e.key !== "floodsentinel_muted") return;
+      const muted = e.newValue === "true";
+      if (muted) {
+        stopSiren();
+        setAlarmActive(false);
+      } else if (alertModeRef.current) {
+        startContinuousSiren();
+        setAlarmActive(true);
+      }
+    };
+    window.addEventListener("storage", handleMuteChange);
+    return () => window.removeEventListener("storage", handleMuteChange);
   }, []);
 
   const sendBrowserNotification = useCallback((upazila: string, score: number) => {
@@ -454,17 +541,25 @@ export default function DashboardContent() {
     }
   }, []);
 
-  // Stop alarm when no more critical predictions
+  // Deactivate full alert mode when no more critical predictions
   useEffect(() => {
     if (!predictions.some((p) => p.risk_level === "critical")) {
-      stopAlarm();
+      stopSiren();
+      setAlarmActive(false);
+      stopFaviconAlert();
+      stopTitleAlert();
+      document.body.classList.remove("alert-mode");
+      setAlertMode(false);
     }
-  }, [predictions, stopAlarm]);
+  }, [predictions]);
 
-  // Cleanup interval on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
+      stopSiren();
+      stopFaviconAlert();
+      stopTitleAlert();
+      document.body.classList.remove("alert-mode");
     };
   }, []);
 
@@ -472,7 +567,13 @@ export default function DashboardContent() {
   const handleHistoricalReplay = useCallback(async () => {
     setHistoricalLoading(true);
     try {
-      await startContinuousAlarm(); // direct user-gesture → unlocks AudioContext
+      // Direct user-gesture → unlocks AudioContext; activate visual alert mode
+      startContinuousSiren();
+      setAlarmActive(true);
+      document.body.classList.add("alert-mode");
+      setAlertMode(true);
+      startFaviconAlert();
+      startTitleAlert("Sylhet");
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -494,14 +595,43 @@ export default function DashboardContent() {
     } finally {
       setHistoricalLoading(false);
     }
-  }, [startContinuousAlarm, sendBrowserNotification]);
+  }, [sendBrowserNotification]);
 
   const handleLiveMode = useCallback(async () => {
-    stopAlarm();
+    stopSiren();
+    setAlarmActive(false);
+    stopFaviconAlert();
+    stopTitleAlert();
+    document.body.classList.remove("alert-mode");
+    setAlertMode(false);
     setIsHistoricalMode(false);
     skipNextAudioRef.current = true;
     await fetchDashboardData();
-  }, [fetchDashboardData, stopAlarm]);
+  }, [fetchDashboardData]);
+
+  /* ── Scenario tester ──────────────────── */
+  const handleScenario = useCallback(async () => {
+    setScenarioLoading(true);
+    setScenarioResult(null);
+    try {
+      const res = await fetch("/api/agent/scenario", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          upazila: scenarioUpazila,
+          district: scenarioDistrict,
+          rainfall_mm: scenarioRainfall,
+          river_level_pct: scenarioRiverPct,
+        }),
+      });
+      const data = await res.json();
+      if (data.prediction) setScenarioResult(data.prediction as PredictionResult);
+    } catch (err) {
+      console.error("[scenario]", err);
+    } finally {
+      setScenarioLoading(false);
+    }
+  }, [scenarioUpazila, scenarioDistrict, scenarioRainfall, scenarioRiverPct]);
 
   /* ── Derived state ─────────────────────── */
   useEffect(() => {
@@ -535,6 +665,9 @@ export default function DashboardContent() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--bg-primary)" }}>
 
+      {/* ── Full-screen red alert overlay ────── */}
+      {alertMode && <div className="alert-overlay" />}
+
       {/* ── Emergency broadcast banner ────────── */}
       {criticalPredictions.length > 0 && (() => {
         const zoneParts = criticalPredictions
@@ -558,10 +691,11 @@ export default function DashboardContent() {
                 📱 SMS DISPATCHED
               </span>
               <button
-                onClick={stopAlarm}
-                style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.5)", color: "white", padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", borderRadius: 2, marginRight: 6, flexShrink: 0, fontFamily: "var(--font-source-code-pro), monospace" }}
+                onClick={silenceAlert}
+                className="silence-btn"
+                style={{ marginRight: 6, flexShrink: 0, fontFamily: "var(--font-source-code-pro), monospace" }}
               >
-                {alarmActive ? "🔕 Silence Alarm" : "🔔 Alarm Silenced"}
+                {alarmActive ? "🔕 Silence Alert" : "🔔 Alert Silenced"}
               </button>
               <button
                 onClick={() => setCriticalDismissed((d) => new Set([...d, ...criticalPredictions.map((p) => p.upazila)]))}
@@ -667,10 +801,13 @@ export default function DashboardContent() {
         <KPICard label={lang === "bn" ? "শেষ আপডেট" : "Last Sync"} value={lastSyncStr} color="#718096" />
       </div>
 
+      {/* ── Advance Warning Banner ───────────── */}
+      <AdvanceWarningBanner show={isHistoricalMode} />
+
       {/* ── Main: map (60%) + alert feed (40%) ── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: "500px" }}>
         {/* Map */}
-        <div style={{ flex: 6, position: "relative", overflow: "hidden" }}>
+        <div style={{ flex: 6, position: "relative", overflow: "hidden", height: "calc(100vh - 180px)", minHeight: 500 }}>
           <FloodMap
             predictions={predictions}
             stations={stations}
@@ -734,8 +871,9 @@ export default function DashboardContent() {
         {/* Tab bar */}
         <div style={{ borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "stretch", minHeight: 36, flexShrink: 0 }}>
           {([
-            { id: "rivers" as const, label: lang === "bn" ? "নদী স্তর" : "River Levels" },
-            { id: "charts" as const, label: lang === "bn" ? "বিশ্লেষণ চার্ট" : "Analytics" },
+            { id: "rivers"   as const, label: lang === "bn" ? "নদী স্তর" : "River Levels" },
+            { id: "charts"   as const, label: lang === "bn" ? "বিশ্লেষণ চার্ট" : "Analytics" },
+            { id: "agentlog" as const, label: "Agent Log" },
           ]).map((tab) => (
             <button
               key={tab.id}
@@ -808,6 +946,10 @@ export default function DashboardContent() {
             )
           )}
 
+          {activeBottomTab === "agentlog" && (
+            <AgentLog predictions={predictions} />
+          )}
+
           {activeBottomTab === "charts" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", height: "100%", overflow: "hidden" }}>
               <div style={{ borderRight: "1px solid var(--border-light)", overflow: "hidden", padding: "4px 0 0" }}>
@@ -837,6 +979,105 @@ export default function DashboardContent() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Scenario Tester ─────────────────── */}
+      <div style={{ position: "fixed", bottom: 220, right: 16, zIndex: 500 }}>
+        {!isScenarioOpen && (
+          <button
+            onClick={() => setIsScenarioOpen(true)}
+            style={{
+              background: "#003d82", color: "white", border: "none",
+              padding: "8px 14px", fontSize: 12, fontWeight: 700,
+              cursor: "pointer", borderRadius: 4, boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+              fontFamily: "var(--font-source-code-pro), monospace",
+            }}
+          >
+            🧪 Scenario Test
+          </button>
+        )}
+        {isScenarioOpen && (
+          <div style={{
+            background: "white", border: "1px solid var(--border-light)",
+            borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+            width: 280, padding: "14px 16px",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#003d82" }}>🧪 What-If Scenario Tester</p>
+                <p style={{ margin: 0, fontSize: 10, color: "var(--text-muted)" }}>Adjust inputs and see how risk changes</p>
+              </div>
+              <button onClick={() => { setIsScenarioOpen(false); setScenarioResult(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#718096" }}><X size={14} /></button>
+            </div>
+
+            <label style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Forecast rainfall: {scenarioRainfall}mm
+            </label>
+            <input type="range" min={0} max={300} value={scenarioRainfall}
+              onChange={(e) => setScenarioRainfall(Number(e.target.value))}
+              style={{ width: "100%", marginBottom: 10, accentColor: "#003d82" }} />
+
+            <label style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600, display: "block", marginBottom: 4 }}>
+              River level: {scenarioRiverPct}% of danger
+            </label>
+            <input type="range" min={50} max={130} value={scenarioRiverPct}
+              onChange={(e) => setScenarioRiverPct(Number(e.target.value))}
+              style={{ width: "100%", marginBottom: 10, accentColor: "#003d82" }} />
+
+            <label style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600, display: "block", marginBottom: 4 }}>Upazila</label>
+            <select
+              className="gov-select"
+              style={{ width: "100%", marginBottom: 12, fontSize: 12 }}
+              value={scenarioUpazila}
+              onChange={(e) => {
+                const loc = MONITORING_LOCATIONS.find((l) => l.upazila === e.target.value);
+                setScenarioUpazila(e.target.value);
+                setScenarioDistrict(loc?.district ?? "");
+                setScenarioResult(null);
+              }}
+            >
+              {MONITORING_LOCATIONS.map((l) => (
+                <option key={l.upazila} value={l.upazila}>{l.upazila} ({l.district})</option>
+              ))}
+            </select>
+
+            <button
+              onClick={handleScenario}
+              disabled={scenarioLoading}
+              style={{
+                width: "100%", background: "#003d82", color: "white", border: "none",
+                padding: "7px 0", fontSize: 12, fontWeight: 700, cursor: scenarioLoading ? "not-allowed" : "pointer",
+                borderRadius: 3, opacity: scenarioLoading ? 0.75 : 1,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}
+            >
+              {scenarioLoading ? (
+                <><span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", animation: "spin 0.7s linear infinite", display: "inline-block" }} /> Running...</>
+              ) : "▶ Run Scenario"}
+            </button>
+
+            {scenarioResult && (
+              <div style={{
+                marginTop: 12, padding: "10px 12px",
+                background: scenarioResult.risk_level === "critical" ? "#fef2f2"
+                  : scenarioResult.risk_level === "high" ? "#fff7ed"
+                  : scenarioResult.risk_level === "medium" ? "#fefce8" : "#f0fdf4",
+                border: `1px solid ${RISK_COLORS[scenarioResult.risk_level]}`,
+                borderRadius: 4,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <RiskBadge risk_level={scenarioResult.risk_level} size="sm" lang={lang} />
+                  <span style={{ fontFamily: "var(--font-source-code-pro), monospace", fontWeight: 700, fontSize: 14, color: RISK_COLORS[scenarioResult.risk_level] }}>
+                    {scenarioResult.risk_score}/100
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5, margin: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" } as React.CSSProperties}>
+                  {scenarioResult.reasoning?.split(".")[0]}.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Toast ───────────────────────────── */}

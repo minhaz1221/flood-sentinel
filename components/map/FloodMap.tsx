@@ -1,11 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Map as LeafletMap, LayerGroup } from "leaflet";
+import type { Map as LeafletMap, LayerGroup, TileLayer } from "leaflet";
 import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
 import type { FloodPrediction, RiverStation, RiverReading, RiskLevel } from "@/lib/types";
 import type { Lang } from "@/lib/i18n/translations";
 import { t } from "@/lib/i18n/translations";
+
+const TILE_LAYERS = {
+  street: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri",
+  },
+  terrain: {
+    url: "https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg",
+    attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>',
+  },
+} as const;
+
+type LayerType = keyof typeof TILE_LAYERS;
+
+const RIVERS = [
+  { name: "Surma",  coords: [[24.89, 91.88], [24.87, 91.42], [24.80, 91.10], [24.60, 90.85]] as [number, number][] },
+  { name: "Jamuna", coords: [[25.20, 89.70], [24.90, 89.72], [24.50, 89.75], [24.10, 89.83]] as [number, number][] },
+  { name: "Padma",  coords: [[24.37, 88.60], [24.08, 89.03], [23.68, 89.83], [23.42, 90.33]] as [number, number][] },
+  { name: "Meghna", coords: [[24.06, 90.98], [23.70, 90.72], [23.23, 90.67]] as [number, number][] },
+];
 
 const RISK_COLOR: Record<RiskLevel, string> = {
   low:      "#27ae60",
@@ -143,7 +167,11 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
   const mapRef          = useRef<LeafletMap | null>(null);
   const markerGroupRef  = useRef<LayerGroup | null>(null);
   const stationGroupRef = useRef<LayerGroup | null>(null);
+  const tileLayerRef    = useRef<TileLayer | null>(null);
+  const riverGroupRef   = useRef<LayerGroup | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [activeLayer, setActiveLayer] = useState<LayerType>("street");
+  const [showRivers, setShowRivers] = useState(false);
   const tr = t[lang];
 
   useEffect(() => {
@@ -167,6 +195,8 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
       );
 
       const map = L.map(mapDomRef.current, {
+        center: [23.6850, 90.3563],
+        zoom: 7,
         zoomControl: false,
         attributionControl: true,
         minZoom: 6,
@@ -174,18 +204,11 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
         maxBounds: BANGLADESH_BOUNDS.pad(0.15),
         maxBoundsViscosity: 0.95,
       });
-      map.fitBounds(BANGLADESH_BOUNDS, { padding: [20, 20] });
-      map.setMinZoom(6);
-      map.setMaxZoom(12);
-
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-        maxZoom: 12,
-      }).addTo(map);
+      map.fitBounds(BANGLADESH_BOUNDS, { padding: [30, 30], maxZoom: 8 });
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      mapRef.current       = map;
+      mapRef.current          = map;
       markerGroupRef.current  = L.layerGroup().addTo(map);
       stationGroupRef.current = L.layerGroup().addTo(map);
       setMapReady(true);
@@ -193,12 +216,64 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
 
     return () => {
       mapRef.current?.remove();
-      mapRef.current       = null;
+      mapRef.current          = null;
       markerGroupRef.current  = null;
       stationGroupRef.current = null;
+      tileLayerRef.current    = null;
+      riverGroupRef.current   = null;
       setMapReady(false);
     };
   }, []);
+
+  /* ── Tile layer swap ───────────────────────── */
+  useEffect(() => {
+    if (!mapReady) return;
+    import("leaflet").then((L) => {
+      const map = mapRef.current;
+      if (!map) return;
+      if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
+      const cfg = TILE_LAYERS[activeLayer];
+      tileLayerRef.current = L.tileLayer(cfg.url, {
+        attribution: cfg.attribution,
+        maxZoom: 12,
+      }).addTo(map);
+    });
+  }, [activeLayer, mapReady]);
+
+  /* ── River overlay toggle ──────────────────── */
+  useEffect(() => {
+    if (!mapReady) return;
+    import("leaflet").then((L) => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      if (riverGroupRef.current) {
+        if (showRivers) map.addLayer(riverGroupRef.current);
+        else map.removeLayer(riverGroupRef.current);
+        return;
+      }
+
+      const group = L.layerGroup();
+      RIVERS.forEach(({ name, coords }) => {
+        const midIdx = Math.floor(coords.length / 2);
+        const line = L.polyline(coords, { color: "#3182ce", weight: 2, opacity: 0.7 });
+        line.bindTooltip(name, { permanent: true, direction: "center", className: "river-label" });
+        group.addLayer(line);
+        // Place label marker at midpoint
+        const mid = coords[midIdx];
+        L.marker(mid as [number, number], {
+          icon: L.divIcon({
+            html: `<span class="river-name-label">${name}</span>`,
+            className: "",
+            iconSize: [60, 16],
+            iconAnchor: [30, 8],
+          }),
+        }).addTo(group);
+      });
+      riverGroupRef.current = group;
+      if (showRivers) group.addTo(map);
+    });
+  }, [showRivers, mapReady]);
 
   useEffect(() => {
     if (!mapReady || !markerGroupRef.current) return;
@@ -262,9 +337,33 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
     });
   }, [stations, readings, mapReady, lang]);
 
+  const layerBtnStyle = (active: boolean) => ({
+    background: active ? "#003d82" : "white",
+    color: active ? "white" : "#003d82",
+    border: "1px solid #003d82",
+    fontSize: 11,
+    fontWeight: 600 as const,
+    width: 80,
+    padding: "5px 0",
+    cursor: "pointer" as const,
+    display: "block",
+    textAlign: "center" as const,
+    lineHeight: 1.2,
+  });
+
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
       <div ref={mapDomRef} style={{ height: "100%", width: "100%" }} />
+
+      {/* Layer toggle buttons */}
+      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, display: "flex", flexDirection: "column", gap: 2 }}>
+        <button style={layerBtnStyle(activeLayer === "satellite")} onClick={() => setActiveLayer("satellite")}>🛰 Satellite</button>
+        <button style={layerBtnStyle(activeLayer === "street")}    onClick={() => setActiveLayer("street")}>🗺 Street</button>
+        <button style={layerBtnStyle(activeLayer === "terrain")}   onClick={() => setActiveLayer("terrain")}>⛰ Terrain</button>
+        <div style={{ marginTop: 4 }}>
+          <button style={layerBtnStyle(showRivers)} onClick={() => setShowRivers(!showRivers)}>🌊 Rivers</button>
+        </div>
+      </div>
 
       {/* Loading overlay */}
       {isLoading && (
@@ -319,7 +418,20 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
         </div>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .river-name-label {
+          font-size: 10px; font-weight: 700; color: #2b6cb0;
+          text-shadow: 0 0 3px white, 0 0 3px white;
+          white-space: nowrap; pointer-events: none;
+          font-family: var(--font-source-code-pro), monospace;
+        }
+        .leaflet-tooltip.river-label {
+          background: transparent; border: none; box-shadow: none;
+          font-size: 10px; font-weight: 700; color: #2b6cb0;
+          text-shadow: 0 0 3px white;
+        }
+      `}</style>
     </div>
   );
 }

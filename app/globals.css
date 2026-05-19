@@ -384,6 +384,75 @@ p  { font-size: 13px; line-height: 1.6; color: #4a5568; margin: 0; }
   header, nav { background: white !important; color: black !important; }
 }
 
+/* ── Emergency alert mode ───────────────────────── */
+body.alert-mode {
+  animation: alertPulse 2s ease-in-out infinite;
+}
+
+@keyframes alertPulse {
+  0%, 100% {
+    background-color: var(--bg-primary);
+    border-color: var(--border-light);
+  }
+  50% {
+    background-color: #fff5f5;
+    border-color: #feb2b2;
+  }
+}
+
+.alert-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(192, 57, 43, 0.04);
+  pointer-events: none;
+  z-index: 9998;
+  animation: overlayPulse 2s ease-in-out infinite;
+}
+
+@keyframes overlayPulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+body.alert-mode .sidebar-nav {
+  border-right: 2px solid rgba(192, 57, 43, 0.3);
+  animation: sidebarAlert 2s ease-in-out infinite;
+}
+
+@keyframes sidebarAlert {
+  0%, 100% { border-right-color: rgba(192, 57, 43, 0.1); }
+  50%       { border-right-color: rgba(192, 57, 43, 0.5); }
+}
+
+body.alert-mode .top-bar {
+  animation: topBarAlert 2s ease-in-out infinite;
+}
+
+@keyframes topBarAlert {
+  0%, 100% { background-color: #1a56a0; }
+  50%       { background-color: #8B1A1A; }
+}
+
+.silence-btn {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.5);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  animation: silencePulse 1s ease-in-out infinite;
+}
+
+@keyframes silencePulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
+
 /* ── Trace pipeline mini ────────────────────────── */
 .trace-pipeline-mini {
   display: flex;
