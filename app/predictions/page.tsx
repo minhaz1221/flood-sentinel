@@ -353,16 +353,32 @@ function PredictionsContent() {
                           </td>
                           <td>
                             {p.arize_trace_id ? (
-                              <a href="#" className="trace-link" style={{
-                                fontFamily: "var(--font-source-code-pro), monospace",
-                                fontSize: 11,
-                                color: "#1a56a0",
-                                textDecoration: "underline",
-                              }}>
-                                trace-{p.arize_trace_id.slice(0, 6)}
+                              <a
+                                href={process.env.NEXT_PUBLIC_ARIZE_DASHBOARD_URL ?? "#"}
+                                target={process.env.NEXT_PUBLIC_ARIZE_DASHBOARD_URL ? "_blank" : undefined}
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 3,
+                                  padding: "2px 7px", borderRadius: 9999,
+                                  background: "#f0fdfa", color: "#0f766e",
+                                  border: "1px solid #99f6e4",
+                                  fontSize: 11, fontWeight: 600, textDecoration: "none",
+                                  fontFamily: "var(--font-source-code-pro), monospace",
+                                }}
+                              >
+                                ✓ Traced ↗
                               </a>
                             ) : (
-                              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Logged</span>
+                              <span style={{
+                                display: "inline-flex", alignItems: "center", gap: 3,
+                                padding: "2px 7px", borderRadius: 9999,
+                                background: "#f0fdfa", color: "#0f766e",
+                                border: "1px solid #99f6e4",
+                                fontSize: 11, fontWeight: 600,
+                                fontFamily: "var(--font-source-code-pro), monospace",
+                              }}>
+                                ✓ Traced
+                              </span>
                             )}
                           </td>
                         </tr>
