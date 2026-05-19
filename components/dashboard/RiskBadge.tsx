@@ -41,6 +41,7 @@ export function RiskBadge({ risk_level, level, size = "md", lang = "en", classNa
       style={{
         display: "inline-flex",
         alignItems: "center",
+        gap: rl === "critical" ? 4 : 0,
         background: RISK_BG[rl],
         color: RISK_FG[rl],
         padding: sz.padding,
@@ -50,9 +51,16 @@ export function RiskBadge({ risk_level, level, size = "md", lang = "en", classNa
         borderRadius: 2,
         whiteSpace: "nowrap",
         fontFamily: "var(--font-noto-sans-bengali, sans-serif)",
-        animation: rl === "critical" ? "blink-dot 2.5s ease-in-out infinite" : undefined,
+        opacity: 1, // always fully opaque — blinking is on the dot only
       }}
     >
+      {rl === "critical" && (
+        <span style={{
+          width: 5, height: 5, borderRadius: "50%",
+          background: "white", flexShrink: 0,
+          animation: "blink-dot 1.4s ease-in-out infinite",
+        }} />
+      )}
       {label}
     </span>
   );
