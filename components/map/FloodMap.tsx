@@ -272,7 +272,7 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
         maxBounds: BANGLADESH_BOUNDS.pad(0.15),
         maxBoundsViscosity: 0.95,
       });
-      map.fitBounds(BANGLADESH_BOUNDS, { padding: [30, 30], maxZoom: 8 });
+      map.fitBounds(BANGLADESH_BOUNDS, { padding: [20, 20], maxZoom: 8 });
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 

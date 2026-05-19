@@ -802,13 +802,15 @@ export default function DashboardContent() {
               <span style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.35)", color: "white", fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-source-code-pro), monospace", margin: "0 8px", borderRadius: 2, flexShrink: 0 }}>
                 📱 SMS DISPATCHED
               </span>
-              <button
-                onClick={silenceAlert}
-                className="silence-btn"
-                style={{ marginRight: 6, flexShrink: 0, fontFamily: "var(--font-source-code-pro), monospace" }}
-              >
-                {alarmActive ? "🔕 Silence Alert" : "🔔 Alert Silenced"}
-              </button>
+              {alarmActive && (
+                <button
+                  onClick={silenceAlert}
+                  className="silence-btn"
+                  style={{ marginRight: 6, flexShrink: 0, fontFamily: "var(--font-source-code-pro), monospace" }}
+                >
+                  🔕 Silence Alert
+                </button>
+              )}
               <button
                 onClick={() => setCriticalDismissed((d) => new Set([...d, ...criticalPredictions.map((p) => p.upazila)]))}
                 style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.3)", color: "white", padding: "4px 7px", cursor: "pointer", borderRadius: 2, flexShrink: 0 }}
@@ -847,10 +849,13 @@ export default function DashboardContent() {
             </span>
           )}
         </div>
-        <button onClick={handleSync} disabled={isSyncing} className="gov-btn no-print" style={{ fontSize: 12, minWidth: 140 }}>
-          {isSyncing
-            ? (syncMessage || (lang === "bn" ? "আপডেট হচ্ছে…" : "Syncing…"))
-            : tr.sync}
+        <button onClick={handleSync} disabled={isSyncing} className="gov-btn no-print" style={{ fontSize: 12, minWidth: 140, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          {isSyncing ? (
+            <>
+              <span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite", flexShrink: 0 }} />
+              {syncMessage || (lang === "bn" ? "আপডেট হচ্ছে…" : "Syncing…")}
+            </>
+          ) : tr.sync}
         </button>
       </div>
 
@@ -908,7 +913,7 @@ export default function DashboardContent() {
       {/* ── KPI cards ─────────────────────────── */}
       <div style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-light)", padding: "10px 20px", display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, flexShrink: 0 }}>
         <KPICard label={lang === "bn" ? "বিপদজনক এলাকা" : "Critical Zones"} value={critCount} color={critCount > 0 ? "#c0392b" : "#27ae60"} sub={critCount > 0 ? (lang === "bn" ? "জরুরি সতর্কতা" : "Immediate action") : (lang === "bn" ? "স্বাভাবিক" : "All clear")} />
-        <KPICard label={lang === "bn" ? "উচ্চ ঝুঁকি" : "High Risk Zones"} value={highCount} color={highCount > 0 ? "#e67e22" : "var(--text-muted)"} />
+        <KPICard label={lang === "bn" ? "উচ্চ ঝুঁকি" : "High Risk Zones"} value={highCount} color="#e67e22" />
         <KPICard label={lang === "bn" ? "SMS পাঠানো" : "SMS Alerts Sent"} value={smsCount} color="#1a56a0" />
         <KPICard label={lang === "bn" ? "ঝুঁকিগ্রস্ত মানুষ" : "Est. People at Risk"} value={atRiskZones > 0 ? formatPop(atRiskZones * 267_000) : "0"} color="#8e44ad" sub="~267K/upazila" />
         <KPICard label={lang === "bn" ? "এআই নির্ভুলতা" : "AI Accuracy"} value="94%" color="#27ae60" sub="Arize verified" />
@@ -1095,8 +1100,8 @@ export default function DashboardContent() {
         </div>
       </div>
 
-      {/* ── Scenario Tester ─────────────────── */}
-      <div style={{ position: "fixed", bottom: 220, right: 16, zIndex: 500 }}>
+      {/* ── Scenario Tester (dev-only) ──────── */}
+      {process.env.NODE_ENV === "development" && <div style={{ position: "fixed", bottom: 220, right: 16, zIndex: 500 }}>
         {!isScenarioOpen && (
           <button
             onClick={() => setIsScenarioOpen(true)}
@@ -1192,7 +1197,7 @@ export default function DashboardContent() {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ── Toast ───────────────────────────── */}
       {toast && (
