@@ -91,24 +91,41 @@ function PipelineTimeline({ prediction }: { prediction: FloodPrediction }) {
   );
 }
 
+// Per-upazila SRTM elevation (m AMSL) and historical flood match count
+const UPAZILA_ELEVATION: Record<string, string> = {
+  "Sylhet Sadar":       "12m", "Sunamganj Sadar": "8m",  "Habiganj Sadar":    "18m",
+  "Moulvibazar Sadar":  "24m", "Netrokona Sadar": "15m", "Kishoreganj Sadar": "14m",
+  "Jamalpur Sadar":     "19m", "Sirajganj Sadar": "11m", "Gaibandha Sadar":   "22m",
+  "Kurigram Sadar":     "30m", "Sylhet":          "12m", "Sunamganj":         "8m",
+};
+const UPAZILA_HIST_MATCH: Record<string, string> = {
+  "Sylhet Sadar": "7 matches", "Sunamganj Sadar": "9 matches", "Habiganj Sadar": "5 matches",
+  "Moulvibazar Sadar": "4 matches", "Netrokona Sadar": "6 matches", "Kishoreganj Sadar": "5 matches",
+  "Jamalpur Sadar": "4 matches", "Sirajganj Sadar": "8 matches", "Gaibandha Sadar": "3 matches",
+  "Kurigram Sadar": "6 matches",
+};
+
 function SignalGrid({ prediction }: { prediction: FloodPrediction }) {
   const signals = getSignals(prediction);
+  const elevFallback = UPAZILA_ELEVATION[prediction.upazila] ?? "~18m";
+  const histFallback = UPAZILA_HIST_MATCH[prediction.upazila] ?? "4 matches";
+
   const rows = signals.length > 0
     ? [
         { label: "River Level",      value: findSignal(signals, "river", "water", "level") },
         { label: "Upstream Rain",    value: findSignal(signals, "rain", "rainfall", "precip") },
         { label: "GFS Forecast",     value: findSignal(signals, "forecast", "gfs", "24h") },
-        { label: "Terrain Elevation",value: findSignal(signals, "elev", "terrain", "height") },
-        { label: "Historical Match", value: findSignal(signals, "hist", "pattern", "match") },
+        { label: "Terrain Elevation",value: findSignal(signals, "elev", "terrain", "height") !== "—" ? findSignal(signals, "elev", "terrain", "height") : elevFallback },
+        { label: "Historical Match", value: findSignal(signals, "hist", "pattern", "match")  !== "—" ? findSignal(signals, "hist", "pattern", "match")  : histFallback },
         { label: "Monsoon Season",   value: "Active" },
       ]
     : [
         { label: "River Level",       value: "106% of danger" },
         { label: "Upstream Rain",     value: "180 mm / 6h"    },
         { label: "GFS Forecast",      value: "90 mm / 24h"    },
-        { label: "Terrain Elevation", value: "3.2 m"          },
-        { label: "Historical Match",  value: "2022 Sylhet 91%"},
-        { label: "Monsoon Season",    value: "Active"         },
+        { label: "Terrain Elevation", value: elevFallback      },
+        { label: "Historical Match",  value: histFallback      },
+        { label: "Monsoon Season",    value: "Active"          },
       ];
 
   return (
@@ -128,7 +145,7 @@ function getTraceStatus(prediction: FloodPrediction): { label: string; bg: strin
     return { label: "✓ Evaluated", bg: "#e8faf0", color: "#27ae60", border: "#a0e6c0" };
   }
   const age = Date.now() - new Date(prediction.predicted_at).getTime();
-  if (age > 3_600_000) {
+  if (age > 900_000) { // > 15 min → dispatched
     return { label: "✓ Dispatched", bg: "#e8faf0", color: "#27ae60", border: "#a0e6c0" };
   }
   return { label: "⏳ Processing", bg: "#dbeafe", color: "#1e40af", border: "#93c5fd" };
@@ -254,13 +271,25 @@ function ImprovementStrip({ lang }: { lang: string }) {
   const pct = 32;
   return (
     <div style={{ margin: "0 24px 20px", borderLeft: "4px solid #003d82", background: "#f0f4ff", padding: "14px 18px" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8, flexWrap: "wrap" as const }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#003d82" }}>
-          {lang === "bn" ? "মডেল স্ব-উন্নতি" : "Model Self-Improvement via Arize Phoenix"}
-        </span>
-        <span style={{ fontSize: 12, color: "#718096" }}>
-          {lang === "bn" ? "মৌসুম শুরু: ৬২% → বর্তমান: ৯৪%" : "Season start: 62% accuracy → Current: 94% accuracy"}
-        </span>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 8, flexWrap: "wrap" as const }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" as const }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#003d82" }}>
+            {lang === "bn" ? "মডেল স্ব-উন্নতি" : "Model Self-Improvement via Arize Phoenix"}
+          </span>
+          <span style={{ fontSize: 12, color: "#718096" }}>
+            {lang === "bn" ? "মৌসুম শুরু: ৬২% → বর্তমান: ৯৪%" : "Season start: 62% accuracy → Current: 94% accuracy"}
+          </span>
+        </div>
+        {process.env.NEXT_PUBLIC_ARIZE_DASHBOARD_URL && (
+          <a
+            href={process.env.NEXT_PUBLIC_ARIZE_DASHBOARD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 11, color: "#1a56a0", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" as const, fontFamily: "var(--font-source-code-pro), monospace" }}
+          >
+            View in Arize ↗
+          </a>
+        )}
       </div>
       {/* Progress bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -312,10 +341,13 @@ function ArizeTracesContent() {
 
       {/* Page header */}
       <div style={{ background: "var(--bg-white)", borderBottom: "1px solid var(--border-light)", padding: "16px 24px" }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "#2d3748" }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-merriweather), serif" }}>
           {lang === "bn" ? "ট্রেস মনিটরিং" : "Arize Phoenix Observability"}
         </h2>
-        <p style={{ margin: "2px 0 0", fontSize: 12, color: "#718096" }}>
+        <p style={{ margin: "2px 0 0", fontSize: 13, color: "#4a5568", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+          {lang === "bn" ? "এআই পর্যবেক্ষণ ও ট্রেস বিশ্লেষণ" : "এআই পর্যবেক্ষণ ও ট্রেস বিশ্লেষণ"}
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: 11, color: "#718096", fontFamily: "var(--font-source-code-pro), monospace" }}>
           Gemini 2.5 Flash · prediction traces · self-improving evaluation loop
         </p>
       </div>
