@@ -79,8 +79,23 @@ export async function POST(req: NextRequest) {
       if (channel === "sms") {
         console.log(`[DISPATCH] Manual SMS for ${prediction.upazila} (${prediction.risk_level})`);
         const r = await sendSMSAlert(prediction);
-        if (r.errors.length) console.error("[DISPATCH] SMS errors:", r.errors);
-        results.push({ channel, ...r });
+        const isTrialBlock = r.errors.some(
+          (e) => e.toLowerCase().includes("unverified") || e.includes("21608")
+        );
+        if (isTrialBlock) {
+          console.warn(`[DISPATCH] Twilio trial restriction for ${prediction.upazila}: ${r.errors[0]}`);
+          results.push({
+            channel,
+            success: false,
+            recipientCount: 0,
+            demo_note: "SMS delivery requires Twilio paid plan for Bangladesh (+880). Integration is complete — upgrade trial to enable.",
+            message: r.message,
+            errors: r.errors,
+          });
+        } else {
+          if (r.errors.length) console.error("[DISPATCH] SMS errors:", r.errors);
+          results.push({ channel, ...r });
+        }
       } else if (channel === "whatsapp") {
         console.log(`[DISPATCH] Manual WhatsApp for ${prediction.upazila}`);
         const r = await sendWhatsAppAlert(prediction);

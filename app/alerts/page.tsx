@@ -7,7 +7,7 @@ import { useLang } from "@/lib/i18n/LangContext";
 import type { FloodPrediction, AlertSent } from "@/lib/types";
 
 type TabFilter = "all" | "critical" | "high" | "medium";
-type DispatchState = Record<string, "idle" | "loading" | "sent" | "no_twilio" | "error">;
+type DispatchState = Record<string, "idle" | "loading" | "sent" | "no_twilio" | "trial_limit" | "error">;
 
 const RISK_BORDER: Record<string, string> = {
   critical: "#c0392b",
@@ -103,7 +103,11 @@ function AlertsContent() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.no_twilio || data.mock) {
+        const hasTrialLimit = Array.isArray(data.dispatched) &&
+          data.dispatched.some((d: { demo_note?: string }) => d.demo_note);
+        if (hasTrialLimit) {
+          setDispatchStates((s) => ({ ...s, [key]: "trial_limit" }));
+        } else if (data.no_twilio || data.mock) {
           setDispatchStates((s) => ({ ...s, [key]: "no_twilio" }));
         } else {
           setDispatchStates((s) => ({ ...s, [key]: "sent" }));
@@ -249,6 +253,7 @@ function AlertsContent() {
             const waLoading    = waState  === "loading";
             const smsNoTwilio  = smsState === "no_twilio";
             const waNoTwilio   = waState  === "no_twilio";
+            const smsTrialLimit = smsState === "trial_limit";
             const smsError     = smsState === "error";
             const waError      = waState  === "error";
             const smsSentCount = alerts.filter((a) => a.prediction_id === p.id && a.channel === "sms").reduce((s, a) => s + a.recipient_count, 0);
@@ -319,6 +324,10 @@ function AlertsContent() {
                     {smsSent ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "#27ae60", background: "#e8faf0", border: "1px solid #a0e6c0", padding: "4px 12px", borderRadius: 3, height: 32 }}>
                         ✓ {smsSentCount > 0 ? `Sent to ${smsSentCount} recipient${smsSentCount !== 1 ? "s" : ""}` : "SMS sent"}
+                      </span>
+                    ) : smsTrialLimit ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#1a56a0", background: "#ebf4ff", border: "1px solid #bee3f8", padding: "4px 12px", borderRadius: 3, height: 32, maxWidth: 340 }}>
+                        ✓ SMS system ready — upgrade Twilio trial to deliver to Bangladesh
                       </span>
                     ) : smsNoTwilio ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#718096", background: "#f0f2f5", border: "1px solid #e2e8f0", padding: "4px 12px", borderRadius: 3, height: 32 }}>

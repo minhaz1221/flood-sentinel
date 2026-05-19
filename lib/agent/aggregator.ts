@@ -77,7 +77,11 @@ export async function buildUpazilaContext(
     .lte("reading_time", refIso)
     .gte("reading_time", window72h)
     .order("reading_time", { ascending: false });
-  if (options.source) primaryReadingQuery.eq("source", options.source);
+  if (options.source) {
+    primaryReadingQuery.eq("source", options.source);
+  } else {
+    primaryReadingQuery.neq("source", "historical_seed");
+  }
 
   const upstreamReadingQuery = supabase
     .from("river_readings")
@@ -86,7 +90,11 @@ export async function buildUpazilaContext(
     .lte("reading_time", refIso)
     .gte("reading_time", window72h)
     .order("reading_time", { ascending: false });
-  if (options.source) upstreamReadingQuery.eq("source", options.source);
+  if (options.source) {
+    upstreamReadingQuery.eq("source", options.source);
+  } else {
+    upstreamReadingQuery.neq("source", "historical_seed");
+  }
 
   const rainfallQuery = supabase
     .from("rainfall_data")
@@ -94,7 +102,11 @@ export async function buildUpazilaContext(
     .eq("upazila", upazila)
     .lte("recorded_at", refIso)
     .gte("recorded_at", window72h);
-  if (options.source) rainfallQuery.eq("source", options.source);
+  if (options.source) {
+    rainfallQuery.eq("source", options.source);
+  } else {
+    rainfallQuery.neq("source", "historical_seed");
+  }
 
   // 7 parallel Supabase queries
   const [
