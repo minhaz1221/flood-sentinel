@@ -1,64 +1,59 @@
 export async function playAlarmSound(): Promise<void> {
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-    if (!AudioContextClass) return
-    const ctx = new AudioContextClass()
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioCtx) return
+    const ctx = new AudioCtx()
     if (ctx.state === 'suspended') await ctx.resume()
 
-    const playTone = (
-      freq: number,
-      startTime: number,
-      duration: number,
-      gain: number
-    ) => {
-      const osc = ctx.createOscillator()
-      const gainNode = ctx.createGain()
-      const distortion = ctx.createWaveShaper()
+    const master = ctx.createGain()
+    master.gain.value = 0.6
+    master.connect(ctx.destination)
 
-      // Slight distortion for urgency
-      const curve = new Float32Array(256)
-      for (let i = 0; i < 256; i++) {
-        const x = (i * 2) / 256 - 1
-        curve[i] = (Math.PI + 400) * x / (Math.PI + 400 * Math.abs(x))
-      }
-      distortion.curve = curve
+    // Layer 1: Main siren sweep (wail pattern) — sawtooth
+    const osc1 = ctx.createOscillator()
+    const gain1 = ctx.createGain()
+    osc1.connect(gain1)
+    gain1.connect(master)
+    osc1.type = 'sawtooth'
+    osc1.frequency.setValueAtTime(650, ctx.currentTime)
+    osc1.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 1.5)
+    osc1.frequency.linearRampToValueAtTime(650, ctx.currentTime + 3.0)
+    gain1.gain.setValueAtTime(0.5, ctx.currentTime)
+    osc1.start(ctx.currentTime)
+    osc1.stop(ctx.currentTime + 3.0)
 
-      osc.connect(distortion)
-      distortion.connect(gainNode)
-      gainNode.connect(ctx.destination)
+    // Layer 2: Harmonic (one octave up, quieter) — square
+    const osc2 = ctx.createOscillator()
+    const gain2 = ctx.createGain()
+    osc2.connect(gain2)
+    gain2.connect(master)
+    osc2.type = 'square'
+    osc2.frequency.setValueAtTime(1300, ctx.currentTime)
+    osc2.frequency.linearRampToValueAtTime(2400, ctx.currentTime + 1.5)
+    osc2.frequency.linearRampToValueAtTime(1300, ctx.currentTime + 3.0)
+    gain2.gain.setValueAtTime(0.15, ctx.currentTime)
+    osc2.start(ctx.currentTime)
+    osc2.stop(ctx.currentTime + 3.0)
 
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime)
-      // Sweep frequency for siren effect
-      osc.frequency.linearRampToValueAtTime(
-        freq * 1.3,
-        ctx.currentTime + startTime + duration * 0.5
-      )
-      osc.frequency.linearRampToValueAtTime(
-        freq,
-        ctx.currentTime + startTime + duration
-      )
+    // Layer 3: Low bass rumble for urgency — sine
+    const osc3 = ctx.createOscillator()
+    const gain3 = ctx.createGain()
+    osc3.connect(gain3)
+    gain3.connect(master)
+    osc3.type = 'sine'
+    osc3.frequency.value = 80
+    gain3.gain.setValueAtTime(0, ctx.currentTime)
+    gain3.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1)
+    gain3.gain.setValueAtTime(0.3, ctx.currentTime + 2.9)
+    gain3.gain.linearRampToValueAtTime(0, ctx.currentTime + 3.0)
+    osc3.start(ctx.currentTime)
+    osc3.stop(ctx.currentTime + 3.0)
 
-      gainNode.gain.setValueAtTime(0, ctx.currentTime + startTime)
-      gainNode.gain.linearRampToValueAtTime(gain, ctx.currentTime + startTime + 0.05)
-      gainNode.gain.setValueAtTime(gain, ctx.currentTime + startTime + duration - 0.05)
-      gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + startTime + duration)
-
-      osc.start(ctx.currentTime + startTime)
-      osc.stop(ctx.currentTime + startTime + duration + 0.1)
-    }
-
-    // Hi-lo siren pattern (3 cycles)
-    for (let i = 0; i < 3; i++) {
-      playTone(960, i * 0.7, 0.35, 0.4)        // HIGH
-      playTone(720, i * 0.7 + 0.35, 0.35, 0.4) // LOW
-    }
   } catch (err) {
-    console.log('[AUDIO] Siren failed:', err)
+    console.log('[SIREN]', err)
   }
 }
 
-// Continuous siren for active CRITICAL state
 let sirenInterval: ReturnType<typeof setInterval> | null = null
 let sirenActive = false
 
@@ -66,7 +61,7 @@ export function startContinuousSiren(): void {
   if (sirenActive) return
   sirenActive = true
   playAlarmSound()
-  sirenInterval = setInterval(playAlarmSound, 3000)
+  sirenInterval = setInterval(playAlarmSound, 3200)
 }
 
 export function stopSiren(): void {

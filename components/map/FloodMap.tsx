@@ -31,6 +31,25 @@ const RIVERS = [
   { name: "Meghna", coords: [[24.06, 90.98], [23.70, 90.72], [23.23, 90.67]] as [number, number][] },
 ];
 
+// Flow arrow positions along each river (downstream = toward Bay of Bengal)
+const FLOW_ARROWS = [
+  // Surma → flows west-to-east, then south
+  { lat: 24.89, lng: 91.88, angle: 200, river: "Surma" },
+  { lat: 24.87, lng: 91.60, angle: 210, river: "Surma" },
+  { lat: 24.80, lng: 91.30, angle: 200, river: "Surma" },
+  // Jamuna → flows south
+  { lat: 25.10, lng: 89.71, angle: 180, river: "Jamuna" },
+  { lat: 24.70, lng: 89.73, angle: 185, river: "Jamuna" },
+  { lat: 24.30, lng: 89.80, angle: 175, river: "Jamuna" },
+  // Padma → flows east
+  { lat: 24.20, lng: 89.20, angle: 110, river: "Padma" },
+  { lat: 23.90, lng: 89.70, angle: 120, river: "Padma" },
+  { lat: 23.60, lng: 90.20, angle: 130, river: "Padma" },
+  // Meghna → flows south
+  { lat: 23.80, lng: 90.85, angle: 170, river: "Meghna" },
+  { lat: 23.50, lng: 90.75, angle: 175, river: "Meghna" },
+];
+
 const RISK_COLOR: Record<RiskLevel, string> = {
   low:      "#27ae60",
   medium:   "#f39c12",
@@ -48,6 +67,17 @@ const MARKER_CONFIG: Record<RiskLevel, { size: number; anchor: number; popupY: n
 const LOCATION_MAP = Object.fromEntries(
   MONITORING_LOCATIONS.map((l) => [l.upazila, { lat: l.lat, lon: l.lon }])
 );
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createFlowArrowIcon(L: any, angle: number, isCritical: boolean) {
+  const color = isCritical ? "#c0392b" : "#3182ce";
+  return L.divIcon({
+    html: `<div class="flow-arrow${isCritical ? " critical" : ""}"><svg viewBox="0 0 24 24" fill="${color}" style="transform:rotate(${angle}deg);width:16px;height:16px;"><path d="M12 2L8 10h3v10h2V10h3L12 2z"/></svg></div>`,
+    className: "",
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+}
 
 function createRiskMarkerHtml(level: RiskLevel): string {
   if (level === "critical") {
@@ -163,15 +193,20 @@ interface FloodMapProps {
 }
 
 export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isLoading = false, lang = "en" }: FloodMapProps) {
+  const containerRef    = useRef<HTMLDivElement>(null);
   const mapDomRef       = useRef<HTMLDivElement>(null);
   const mapRef          = useRef<LeafletMap | null>(null);
   const markerGroupRef  = useRef<LayerGroup | null>(null);
   const stationGroupRef = useRef<LayerGroup | null>(null);
   const tileLayerRef    = useRef<TileLayer | null>(null);
   const riverGroupRef   = useRef<LayerGroup | null>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const flowGroupRef    = useRef<LayerGroup | null>(null);
+  const skeletonGroupRef = useRef<LayerGroup | null>(null);
+  const [mapReady, setMapReady]       = useState(false);
   const [activeLayer, setActiveLayer] = useState<LayerType>("street");
-  const [showRivers, setShowRivers] = useState(false);
+  const [showRivers, setShowRivers]   = useState(false);
+  const [showFlow, setShowFlow]       = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const tr = t[lang];
 
   useEffect(() => {
@@ -221,8 +256,29 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
       stationGroupRef.current = null;
       tileLayerRef.current    = null;
       riverGroupRef.current   = null;
+      flowGroupRef.current    = null;
       setMapReady(false);
     };
+  }, []);
+
+  /* ── Fullscreen toggle ─────────────────────── */
+  const toggleFullscreen = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  useEffect(() => {
+    const handler = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      setTimeout(() => mapRef.current?.invalidateSize(), 100);
+    };
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
   }, []);
 
   /* ── Tile layer swap ───────────────────────── */
@@ -259,7 +315,6 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
         const line = L.polyline(coords, { color: "#3182ce", weight: 2, opacity: 0.7 });
         line.bindTooltip(name, { permanent: true, direction: "center", className: "river-label" });
         group.addLayer(line);
-        // Place label marker at midpoint
         const mid = coords[midIdx];
         L.marker(mid as [number, number], {
           icon: L.divIcon({
@@ -275,6 +330,71 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
     });
   }, [showRivers, mapReady]);
 
+  /* ── Flow arrow layer ──────────────────────── */
+  useEffect(() => {
+    if (!mapReady) return;
+    import("leaflet").then((L) => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      // Always tear down and rebuild when predictions or showFlow changes
+      if (flowGroupRef.current) {
+        map.removeLayer(flowGroupRef.current);
+        flowGroupRef.current = null;
+      }
+      if (!showFlow) return;
+
+      // Surma river goes critical when Sylhet/Sunamganj is critical
+      const hasSylhetCritical = predictions.some(
+        (p) =>
+          p.risk_level === "critical" &&
+          (p.upazila.toLowerCase().includes("sylhet") ||
+            p.upazila.toLowerCase().includes("sunamganj") ||
+            p.district?.toLowerCase().includes("sylhet") ||
+            p.district?.toLowerCase().includes("sunamganj"))
+      );
+
+      const group = L.layerGroup();
+      FLOW_ARROWS.forEach(({ lat, lng, angle, river }) => {
+        const isCritical = river === "Surma" && hasSylhetCritical;
+        const icon = createFlowArrowIcon(L, angle, isCritical);
+        L.marker([lat, lng], { icon, interactive: false }).addTo(group);
+      });
+      flowGroupRef.current = group;
+      group.addTo(map);
+    });
+  }, [showFlow, predictions, mapReady]);
+
+  /* ── Skeleton markers (show while loading) ─── */
+  useEffect(() => {
+    if (!mapReady) return;
+    import("leaflet").then((L) => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      if (!skeletonGroupRef.current) {
+        const group = L.layerGroup();
+        MONITORING_LOCATIONS.forEach((loc) => {
+          L.marker([loc.lat, loc.lon], {
+            icon: L.divIcon({
+              html: '<div class="skeleton-marker"></div>',
+              className: "",
+              iconSize: [16, 16],
+              iconAnchor: [8, 8],
+            }),
+            interactive: false,
+          } as Parameters<typeof L.marker>[1]).addTo(group);
+        });
+        skeletonGroupRef.current = group;
+      }
+
+      if (isLoading) map.addLayer(skeletonGroupRef.current!);
+      else map.removeLayer(skeletonGroupRef.current!);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, mapReady]);
+
+  /* ── Risk markers ──────────────────────────── */
   useEffect(() => {
     if (!mapReady || !markerGroupRef.current) return;
 
@@ -308,6 +428,7 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
     });
   }, [predictions, mapReady, onUpazilaSelect, lang]);
 
+  /* ── Station markers ───────────────────────── */
   useEffect(() => {
     if (!mapReady || !stationGroupRef.current) return;
 
@@ -351,41 +472,61 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
     lineHeight: 1.2,
   });
 
+  // Determine if any Surma-basin upazila is critical (for legend color)
+  const surmaIsCritical = predictions.some(
+    (p) =>
+      p.risk_level === "critical" &&
+      (p.upazila.toLowerCase().includes("sylhet") ||
+        p.upazila.toLowerCase().includes("sunamganj") ||
+        p.district?.toLowerCase().includes("sylhet") ||
+        p.district?.toLowerCase().includes("sunamganj"))
+  );
+
   return (
-    <div style={{ position: "relative", height: "100%", width: "100%" }}>
+    <div ref={containerRef} style={{ position: "relative", height: "100%", width: "100%" }}>
       <div ref={mapDomRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* Layer toggle buttons */}
+      {/* Layer toggle + fullscreen + flow buttons */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, display: "flex", flexDirection: "column", gap: 2 }}>
         <button style={layerBtnStyle(activeLayer === "satellite")} onClick={() => setActiveLayer("satellite")}>🛰 Satellite</button>
         <button style={layerBtnStyle(activeLayer === "street")}    onClick={() => setActiveLayer("street")}>🗺 Street</button>
         <button style={layerBtnStyle(activeLayer === "terrain")}   onClick={() => setActiveLayer("terrain")}>⛰ Terrain</button>
-        <div style={{ marginTop: 4 }}>
+        <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
           <button style={layerBtnStyle(showRivers)} onClick={() => setShowRivers(!showRivers)}>🌊 Rivers</button>
+          <button style={layerBtnStyle(showFlow)}   onClick={() => setShowFlow(!showFlow)}>🌊 Flow</button>
+          <button
+            onClick={toggleFullscreen}
+            style={{
+              display: "block",
+              width: 80,
+              padding: "6px 0",
+              marginTop: 4,
+              background: "white",
+              border: "1px solid #003d82",
+              color: "#003d82",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              borderRadius: 4,
+              textAlign: "center",
+            }}
+          >
+            {isFullscreen ? "✕ Exit" : "⛶ Full"}
+          </button>
         </div>
       </div>
 
-      {/* Loading overlay */}
+      {/* Loading badge — skeleton markers appear on the map itself */}
       {isLoading && (
         <div style={{
-          position: "absolute", inset: 0, zIndex: 1000,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(245,247,250,0.85)",
-          backdropFilter: "blur(4px)",
+          position: "absolute", top: 10, left: 10, zIndex: 1000,
+          background: "rgba(0,61,130,0.9)", color: "white",
+          padding: "5px 10px", borderRadius: 4, fontSize: 11, fontWeight: 600,
+          display: "flex", alignItems: "center", gap: 6,
+          fontFamily: "var(--font-source-code-pro), monospace",
         }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{
-              width: 32, height: 32,
-              border: "3px solid var(--bg-header)",
-              borderTopColor: "transparent",
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-              margin: "0 auto 10px",
-            }} />
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
-              {lang === "bn" ? "তথ্য লোড হচ্ছে…" : "Loading predictions…"}
-            </p>
-          </div>
+          <div style={{ width: 8, height: 8, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+          {lang === "bn" ? "লোড হচ্ছে…" : "Syncing…"}
         </div>
       )}
 
@@ -416,10 +557,44 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
             {tr.gauge_station}
           </span>
         </div>
+        {showFlow && (
+          <>
+            <div style={{ borderTop: "1px solid var(--border-light)", marginTop: 6, paddingTop: 6 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 5, fontFamily: "var(--font-source-code-pro), monospace" }}>
+                FLOW
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <svg viewBox="0 0 24 24" fill="#3182ce" style={{ width: 12, height: 12, flexShrink: 0 }}>
+                  <path d="M12 2L8 10h3v10h2V10h3L12 2z" />
+                </svg>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+                  Water flow
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <svg viewBox="0 0 24 24" fill={surmaIsCritical ? "#c0392b" : "#3182ce"} style={{ width: 12, height: 12, flexShrink: 0 }}>
+                  <path d="M12 2L8 10h3v10h2V10h3L12 2z" />
+                </svg>
+                <span style={{ fontSize: 11, color: surmaIsCritical ? "#c0392b" : "var(--text-muted)", fontWeight: surmaIsCritical ? 700 : 400, fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+                  {surmaIsCritical ? "Critical flood flow" : "Surma basin"}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes skeletonPulse {
+          0%, 100% { opacity: 0.35; transform: scale(1); }
+          50%       { opacity: 0.75; transform: scale(1.25); }
+        }
+        .skeleton-marker {
+          width: 16px; height: 16px;
+          background: #cbd5e0; border-radius: 50%; border: 2px solid white;
+          animation: skeletonPulse 1.5s ease-in-out infinite;
+        }
         .river-name-label {
           font-size: 10px; font-weight: 700; color: #2b6cb0;
           text-shadow: 0 0 3px white, 0 0 3px white;
@@ -430,6 +605,22 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
           background: transparent; border: none; box-shadow: none;
           font-size: 10px; font-weight: 700; color: #2b6cb0;
           text-shadow: 0 0 3px white;
+        }
+        .flow-arrow {
+          width: 20px; height: 20px;
+          display: flex; align-items: center; justify-content: center;
+          animation: flowMove 1.5s ease-in-out infinite;
+        }
+        .flow-arrow.critical {
+          animation: flowMoveCritical 0.8s ease-in-out infinite;
+        }
+        @keyframes flowMove {
+          0%, 100% { opacity: 0.4; transform: translateY(0px); }
+          50%       { opacity: 1;   transform: translateY(-3px); }
+        }
+        @keyframes flowMoveCritical {
+          0%, 100% { opacity: 0.6; transform: translateY(0px); }
+          50%       { opacity: 1;   transform: translateY(-5px); }
         }
       `}</style>
     </div>

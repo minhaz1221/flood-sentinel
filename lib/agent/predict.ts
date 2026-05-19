@@ -22,6 +22,23 @@ async function getMcpContext(): Promise<string> {
   return `\nDATA PIPELINE STATUS (via Fivetran MCP):\n- Data freshness: ${freshness.isFresh ? "FRESH" : "STALE"}\n- Stale sources: ${freshness.staleSources.join(", ") || "none"}\n- Recommendation: ${freshness.recommendation}\n`;
 }
 
+function compactContext(ctx: UpazilaContext): string {
+  const trend = (t: string) => t === "rising" ? "↑" : t === "falling" ? "↓" : "→";
+  const lines: string[] = [
+    `${ctx.upazila}, ${ctx.district} | monsoon=${ctx.monsoon_season} | as_of=${ctx.as_of}`,
+  ];
+  for (const s of ctx.stations) {
+    lines.push(`Station ${s.station_id}: ${s.water_level}m/${s.danger_level ?? "?"}m DL (${s.pct_of_danger ?? "?"}%) ${trend(s.trend)}`);
+  }
+  for (const s of ctx.upstream_stations) {
+    lines.push(`Upstream ${s.station_id}: ${s.water_level}m/${s.danger_level ?? "?"}m (${s.pct_of_danger ?? "?"}%) ${trend(s.trend)}`);
+  }
+  lines.push(`Rain 24h=${ctx.rainfall_24h_mm}mm 48h=${ctx.rainfall_48h_mm}mm 72h=${ctx.rainfall_72h_mm}mm`);
+  lines.push(`Fcst 24h=${ctx.forecast_24h_mm}mm 48h=${ctx.forecast_48h_mm}mm 72h=${ctx.forecast_72h_mm}mm`);
+  lines.push(`above_danger=${ctx.any_above_danger} above_warning=${ctx.any_above_warning} upstream_threat=${ctx.upstream_threat}`);
+  return lines.join("\n");
+}
+
 async function callGemini(context: UpazilaContext, mcpContext = ""): Promise<PredictionResult> {
   const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
@@ -30,11 +47,11 @@ async function callGemini(context: UpazilaContext, mcpContext = ""): Promise<Pre
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.1,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 512,
     },
   });
 
-  const prompt = mcpContext + JSON.stringify(context, null, 2);
+  const prompt = mcpContext + compactContext(context);
   const result = await model.generateContent(prompt);
   const text = result.response.text();
 

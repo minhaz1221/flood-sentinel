@@ -355,8 +355,11 @@ export default function DashboardContent() {
 
   const [alarmActive, setAlarmActive] = useState(false);
   const [alertMode, setAlertMode]     = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncMessage, setSyncMessage]   = useState("");
 
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const predictionsRef   = useRef<FloodPrediction[]>([]);
   const healthTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPlayedIdsRef = useRef<Set<string>>(new Set());
   const skipNextAudioRef = useRef(false);
@@ -367,6 +370,7 @@ export default function DashboardContent() {
 
   /* ── Sync langRef with current lang ────────── */
   useEffect(() => { langRef.current = lang; }, [lang]);
+  useEffect(() => { predictionsRef.current = predictions; }, [predictions]);
 
   /* ── Data fetching ─────────────────────────── */
   const fetchDashboardData = useCallback(async () => {
@@ -452,44 +456,85 @@ export default function DashboardContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [predictions]);
 
-  /* ── Sync handler — progressive single calls (Hobby 10s limit) ── */
+  /* ── Sync handler — parallel batches of 3 ── */
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
-    try {
-      // Sync data sources first (fast — just DB writes)
-      await fetch("/api/sync/all", { method: "POST" });
+    setSyncProgress(0);
+    setSyncMessage(lang === "bn" ? "সিঙ্ক হচ্ছে…" : "Syncing data…");
 
-      // Predict one upazila at a time (~4s each, well under 10s).
-      // Update the UI after each result so predictions fill in progressively.
-      for (const loc of MONITORING_LOCATIONS) {
-        try {
-          const res = await fetch("/api/agent", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "single", upazila: loc.upazila, district: loc.district }),
-          });
+    try {
+      // FIX 3: Cache check — skip Gemini if predictions are < 30 min old
+      const latestPred = predictionsRef.current[0];
+      if (latestPred?.predicted_at) {
+        const ageMs = Date.now() - new Date(latestPred.predicted_at).getTime();
+        if (ageMs < 30 * 60 * 1000) {
+          setSyncMessage(lang === "bn" ? "ক্যাশ লোড হচ্ছে…" : "Loading from cache…");
+          setSyncProgress(50);
+          const res = await fetch("/api/agent");
           const data = await res.json();
-          if (data.prediction) {
-            const newPred = data.prediction as FloodPrediction;
-            setPredictions((prev) => {
-              const filtered = prev.filter((p) => p.upazila !== newPred.upazila);
-              return [newPred, ...filtered];
-            });
+          if ((data.predictions?.length ?? 0) > 0) {
+            setPredictions(data.predictions);
+            setLastSyncTime(new Date());
+            setSyncProgress(100);
+            setSyncMessage(lang === "bn" ? "ক্যাশ থেকে আপডেট!" : "Updated from cache!");
+            setTimeout(() => { setSyncMessage(""); setSyncProgress(0); }, 1500);
+            setIsSyncing(false);
+            return;
           }
-        } catch (err) {
-          console.error(`[sync] ${loc.upazila} failed:`, err);
         }
-        // 1s gap between calls — keeps rate limits happy and gives the UI a moment to render
-        await new Promise((r) => setTimeout(r, 1000));
       }
 
-      await fetchDashboardData();
+      // Step 1: Sync rainfall (fast, no Gemini)
+      setSyncMessage(lang === "bn" ? "বৃষ্টির তথ্য আনা হচ্ছে…" : "Fetching live rainfall…");
+      await fetch("/api/sync/rainfall", { method: "POST" });
+      setSyncProgress(10);
+
+      // Step 2: Parallel batches of 3 (respects Gemini rate limits)
+      setSyncMessage(lang === "bn" ? "AI পূর্বাভাস চলছে…" : "Running AI predictions…");
+      const total = MONITORING_LOCATIONS.length;
+      const batchSize = 3;
+
+      for (let i = 0; i < total; i += batchSize) {
+        const batch = MONITORING_LOCATIONS.slice(i, i + batchSize);
+
+        const results = await Promise.allSettled(
+          batch.map((loc) =>
+            fetch("/api/agent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode: "single", upazila: loc.upazila, district: loc.district }),
+            }).then((r) => r.json())
+          )
+        );
+
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value?.prediction) {
+            const pred = result.value.prediction as FloodPrediction;
+            setPredictions((prev) => {
+              const filtered = prev.filter((p) => p.upazila !== pred.upazila);
+              return [pred, ...filtered].sort((a, b) => b.risk_score - a.risk_score);
+            });
+          }
+        }
+
+        const done = Math.min(i + batchSize, total);
+        setSyncProgress(10 + Math.round((done / total) * 85));
+        setSyncMessage(`${lang === "bn" ? "AI পূর্বাভাস" : "AI predictions"}: ${done}/${total}…`);
+      }
+
+      setLastSyncTime(new Date());
+      setSyncProgress(100);
+      setSyncMessage(lang === "bn" ? "সম্পন্ন!" : "Complete!");
+      setTimeout(() => { setSyncMessage(""); setSyncProgress(0); }, 2000);
+
     } catch (err) {
       console.error("[sync] error:", err);
+      setSyncMessage("Sync failed");
+      setTimeout(() => { setSyncMessage(""); setSyncProgress(0); }, 3000);
     } finally {
       setIsSyncing(false);
     }
-  }, [fetchDashboardData]);
+  }, [lang]);
 
   /* ── Alert mode controls ──────────────── */
   const silenceAlert = useCallback(() => {
@@ -566,14 +611,22 @@ export default function DashboardContent() {
   /* ── Historical replay ─────────────────── */
   const handleHistoricalReplay = useCallback(async () => {
     setHistoricalLoading(true);
+    setIsHistoricalMode(true); // activate immediately so banner shows right away
+
+    // Start visual alert immediately on user click (no async gap)
+    document.body.classList.add("alert-mode");
+    setAlertMode(true);
+
+    // Start siren only if not muted (still on the user-gesture call stack)
     try {
-      // Direct user-gesture → unlocks AudioContext; activate visual alert mode
-      startContinuousSiren();
-      setAlarmActive(true);
-      document.body.classList.add("alert-mode");
-      setAlertMode(true);
-      startFaviconAlert();
-      startTitleAlert("Sylhet");
+      const muted = localStorage.getItem("floodsentinel_muted") === "true";
+      if (!muted) {
+        startContinuousSiren();
+        setAlarmActive(true);
+      }
+    } catch {}
+
+    try {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -582,10 +635,13 @@ export default function DashboardContent() {
       const data = await res.json();
       if (data.predictions?.length > 0) {
         setPredictions(data.predictions);
-        setIsHistoricalMode(true);
         setSelectedStation("NE95.4");
         setToast("Loaded 2022 Sylhet flood data — Sylhet CRITICAL 90/100");
         setTimeout(() => setToast(null), 5000);
+        // Start favicon/title after we know the upazila name
+        const firstCrit = (data.predictions as FloodPrediction[]).find((p) => p.risk_level === "critical");
+        startFaviconAlert();
+        startTitleAlert(firstCrit?.upazila ?? "Sylhet");
         (data.predictions as FloodPrediction[])
           .filter((p) => p.risk_level === "critical")
           .forEach((p) => sendBrowserNotification(p.upazila, p.risk_score));
@@ -665,6 +721,13 @@ export default function DashboardContent() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--bg-primary)" }}>
 
+      {/* ── Sync progress bar ────────────────── */}
+      {isSyncing && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: 3, background: "#e2e8f0", zIndex: 9999 }}>
+          <div style={{ height: "100%", background: "#003d82", width: `${syncProgress}%`, transition: "width 0.5s ease" }} />
+        </div>
+      )}
+
       {/* ── Full-screen red alert overlay ────── */}
       {alertMode && <div className="alert-overlay" />}
 
@@ -735,8 +798,10 @@ export default function DashboardContent() {
             </span>
           )}
         </div>
-        <button onClick={handleSync} disabled={isSyncing} className="gov-btn no-print" style={{ fontSize: 12 }}>
-          {isSyncing ? (lang === "bn" ? "আপডেট হচ্ছে…" : "Syncing…") : tr.sync}
+        <button onClick={handleSync} disabled={isSyncing} className="gov-btn no-print" style={{ fontSize: 12, minWidth: 140 }}>
+          {isSyncing
+            ? (syncMessage || (lang === "bn" ? "আপডেট হচ্ছে…" : "Syncing…"))
+            : tr.sync}
         </button>
       </div>
 
