@@ -44,16 +44,27 @@ async function callGemini(context: UpazilaContext, mcpContext = ""): Promise<Pre
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
     systemInstruction: FLOOD_PREDICTION_SYSTEM_PROMPT,
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.1,
-      maxOutputTokens: 512,
-    },
   });
 
-  const prompt = mcpContext + compactContext(context);
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
+  const userMessage = mcpContext + compactContext(context);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await Promise.race<any>([
+    model.generateContent({
+      contents: [{ role: "user", parts: [{ text: userMessage }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 300,
+        temperature: 0.1,
+        candidateCount: 1,
+      },
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Gemini timeout")), 8000)
+    ),
+  ]);
+
+  const text: string = result.response.text();
 
   let parsed: Omit<PredictionResult, "upazila" | "district">;
   try {
