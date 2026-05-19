@@ -57,9 +57,15 @@ function fmtLastSync(entry: SyncLogEntry | undefined, lang: string, staticDatase
   if (staticDataset) return { text: "Static dataset — loaded at setup", muted: true };
   if (!entry) return { text: lang === "bn" ? "এখনো সিঙ্ক হয়নি" : "Not yet synced", muted: true };
   const date = new Date(entry.started_at);
-  const text = isNaN(date.getTime())
-    ? safeFormatDate(entry.started_at)
-    : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (isNaN(date.getTime())) return { text: safeFormatDate(entry.started_at), muted: false };
+  const diffMs  = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffHr  = Math.floor(diffMin / 60);
+  let text: string;
+  if (diffMin < 1)   text = lang === "bn" ? "এইমাত্র"              : "Just now";
+  else if (diffMin < 60) text = lang === "bn" ? `${diffMin} মিনিট আগে` : `${diffMin} min ago`;
+  else if (diffHr  < 24) text = lang === "bn" ? `${diffHr} ঘণ্টা আগে`  : `${diffHr}h ago`;
+  else text = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   return { text, muted: false };
 }
 
@@ -217,6 +223,9 @@ function McpStatusPanel({ lang }: { lang: string }) {
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { testConnection(); }, []); // auto-ping on mount
+
   return (
     <div style={{
       margin: "0 24px 20px",
@@ -286,10 +295,20 @@ function McpStatusPanel({ lang }: { lang: string }) {
         {testResult === "ok"    && <span style={{ fontSize: 11, color: "#27ae60", fontWeight: 600 }}>✓ {lang === "bn" ? "সংযোগ সফল" : "Connection successful"}</span>}
         {testResult === "error" && <span style={{ fontSize: 11, color: "#c0392b", fontWeight: 600 }}>✗ {lang === "bn" ? "সংযোগ ব্যর্থ" : "Connection failed"}</span>}
         <button
-          className="gov-btn"
-          style={{ fontSize: 11, padding: "3px 12px", display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto" }}
           disabled={testing}
           onClick={testConnection}
+          style={{
+            fontSize: 11, padding: "3px 12px", marginLeft: "auto",
+            display: "inline-flex", alignItems: "center", gap: 5,
+            background: testing ? "#3b82f6" : "white",
+            color: testing ? "white" : "#3b82f6",
+            border: "2px solid #3b82f6",
+            borderRadius: 3, cursor: testing ? "not-allowed" : "pointer",
+            fontWeight: 600, fontFamily: "var(--font-source-code-pro), monospace",
+            transition: "background 0.15s, color 0.15s",
+          }}
+          onMouseEnter={(e) => { if (!testing) { (e.currentTarget as HTMLButtonElement).style.background = "#3b82f6"; (e.currentTarget as HTMLButtonElement).style.color = "white"; } }}
+          onMouseLeave={(e) => { if (!testing) { (e.currentTarget as HTMLButtonElement).style.background = "white"; (e.currentTarget as HTMLButtonElement).style.color = "#3b82f6"; } }}
         >
           {testing ? (
             <>
@@ -328,7 +347,7 @@ function DataSourcesContent() {
       .finally(() => setLoading(false));
   }, []);
 
-  const fmtCount = (n: number | undefined) => (n == null ? "…" : n === 0 ? "—" : formatKSuffix(n));
+  const fmtCount = (n: number | undefined) => (n == null ? "…" : formatKSuffix(n));
   const recordsSynced = (dbStats?.river_readings ?? 0) + (dbStats?.rainfall_data ?? 0) + (dbStats?.weather_forecasts ?? 0);
   const recordsFmt    = loading ? "—" : formatKSuffix(recordsSynced);
 
