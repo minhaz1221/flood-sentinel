@@ -25,29 +25,49 @@ const TILE_LAYERS = {
 type LayerType = keyof typeof TILE_LAYERS;
 
 const RIVERS = [
-  { name: "Surma",  coords: [[24.89, 91.88], [24.87, 91.42], [24.80, 91.10], [24.60, 90.85]] as [number, number][] },
-  { name: "Jamuna", coords: [[25.20, 89.70], [24.90, 89.72], [24.50, 89.75], [24.10, 89.83]] as [number, number][] },
-  { name: "Padma",  coords: [[24.37, 88.60], [24.08, 89.03], [23.68, 89.83], [23.42, 90.33]] as [number, number][] },
-  { name: "Meghna", coords: [[24.06, 90.98], [23.70, 90.72], [23.23, 90.67]] as [number, number][] },
+  {
+    name: "Surma",
+    coords: [[24.89,91.88],[24.87,91.65],[24.83,91.42],[24.78,91.18],[24.68,90.92]] as [number,number][],
+    color: "#2b6cb0", weight: 4, opacity: 0.85,
+  },
+  {
+    name: "Jamuna",
+    coords: [[25.20,89.70],[24.90,89.72],[24.50,89.75],[24.10,89.83],[23.80,89.92]] as [number,number][],
+    color: "#2b6cb0", weight: 5, opacity: 0.85,
+  },
+  {
+    name: "Padma",
+    coords: [[24.37,88.60],[24.08,89.03],[23.85,89.45],[23.68,89.83],[23.42,90.33]] as [number,number][],
+    color: "#2b6cb0", weight: 5, opacity: 0.85,
+  },
+  {
+    name: "Meghna",
+    coords: [[24.06,90.98],[23.80,90.85],[23.55,90.72],[23.23,90.67],[22.90,90.62]] as [number,number][],
+    color: "#2b6cb0", weight: 4, opacity: 0.85,
+  },
 ];
 
-// Flow arrow positions along each river (downstream = toward Bay of Bengal)
 const FLOW_ARROWS = [
-  // Surma → flows west-to-east, then south
-  { lat: 24.89, lng: 91.88, angle: 200, river: "Surma" },
-  { lat: 24.87, lng: 91.60, angle: 210, river: "Surma" },
-  { lat: 24.80, lng: 91.30, angle: 200, river: "Surma" },
-  // Jamuna → flows south
-  { lat: 25.10, lng: 89.71, angle: 180, river: "Jamuna" },
-  { lat: 24.70, lng: 89.73, angle: 185, river: "Jamuna" },
-  { lat: 24.30, lng: 89.80, angle: 175, river: "Jamuna" },
-  // Padma → flows east
-  { lat: 24.20, lng: 89.20, angle: 110, river: "Padma" },
-  { lat: 23.90, lng: 89.70, angle: 120, river: "Padma" },
-  { lat: 23.60, lng: 90.20, angle: 130, river: "Padma" },
-  // Meghna → flows south
-  { lat: 23.80, lng: 90.85, angle: 170, river: "Meghna" },
-  { lat: 23.50, lng: 90.75, angle: 175, river: "Meghna" },
+  // Surma — 5 arrows, clearly visible at zoom 7
+  { lat: 24.91, lng: 91.88, angle: 200, river: "Surma" },
+  { lat: 24.88, lng: 91.65, angle: 205, river: "Surma" },
+  { lat: 24.85, lng: 91.42, angle: 210, river: "Surma" },
+  { lat: 24.80, lng: 91.20, angle: 205, river: "Surma" },
+  { lat: 24.72, lng: 90.98, angle: 200, river: "Surma" },
+  // Jamuna — 4 arrows
+  { lat: 25.15, lng: 89.71, angle: 180, river: "Jamuna" },
+  { lat: 24.85, lng: 89.73, angle: 182, river: "Jamuna" },
+  { lat: 24.55, lng: 89.76, angle: 178, river: "Jamuna" },
+  { lat: 24.20, lng: 89.82, angle: 180, river: "Jamuna" },
+  // Padma — 4 arrows
+  { lat: 24.20, lng: 89.10, angle: 115, river: "Padma" },
+  { lat: 23.95, lng: 89.55, angle: 120, river: "Padma" },
+  { lat: 23.72, lng: 90.00, angle: 125, river: "Padma" },
+  { lat: 23.48, lng: 90.35, angle: 130, river: "Padma" },
+  // Meghna — 3 arrows
+  { lat: 24.00, lng: 90.92, angle: 168, river: "Meghna" },
+  { lat: 23.72, lng: 90.78, angle: 172, river: "Meghna" },
+  { lat: 23.45, lng: 90.68, angle: 170, river: "Meghna" },
 ];
 
 const RISK_COLOR: Record<RiskLevel, string> = {
@@ -58,9 +78,9 @@ const RISK_COLOR: Record<RiskLevel, string> = {
 };
 
 const MARKER_CONFIG: Record<RiskLevel, { size: number; anchor: number; popupY: number }> = {
-  critical: { size: 44, anchor: 22, popupY: -22 },
-  high:     { size: 34, anchor: 17, popupY: -17 },
-  medium:   { size: 28, anchor: 14, popupY: -14 },
+  critical: { size: 52, anchor: 26, popupY: -26 },
+  high:     { size: 40, anchor: 20, popupY: -20 },
+  medium:   { size: 32, anchor: 16, popupY: -16 },
   low:      { size: 22, anchor: 11, popupY: -11 },
 };
 
@@ -70,12 +90,15 @@ const LOCATION_MAP = Object.fromEntries(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createFlowArrowIcon(L: any, angle: number, isCritical: boolean) {
-  const color = isCritical ? "#c0392b" : "#3182ce";
+  const color       = isCritical ? "#c0392b" : "#1a6eb5";
+  const strokeColor = isCritical ? "#ff6b6b"  : "#63b3ed";
+  const size        = isCritical ? 44 : 36;
+  const glow        = isCritical ? "6px" : "3px";
   return L.divIcon({
-    html: `<div class="flow-arrow${isCritical ? " critical" : ""}"><svg viewBox="0 0 24 24" fill="${color}" style="transform:rotate(${angle}deg);width:16px;height:16px;"><path d="M12 2L8 10h3v10h2V10h3L12 2z"/></svg></div>`,
+    html: `<div class="flow-arrow ${isCritical ? "critical" : "normal"}" style="width:${size}px;height:${size}px"><svg viewBox="0 0 32 32" style="width:${size}px;height:${size}px;transform:rotate(${angle}deg);filter:drop-shadow(0 0 ${glow} ${color})"><polygon points="16,2 26,14 20,14 20,30 12,30 12,14 6,14" fill="${color}" stroke="${strokeColor}" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
     className: "",
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
+    iconSize:   [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -209,6 +232,16 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
   const [isFullscreen, setIsFullscreen] = useState(false);
   const tr = t[lang];
 
+  // Computed before useEffects so river overlay can depend on it
+  const surmaIsCritical = predictions.some(
+    (p) =>
+      p.risk_level === "critical" &&
+      (p.upazila.toLowerCase().includes("sylhet") ||
+        p.upazila.toLowerCase().includes("sunamganj") ||
+        p.district?.toLowerCase().includes("sylhet") ||
+        p.district?.toLowerCase().includes("sunamganj"))
+  );
+
   useEffect(() => {
     if (document.getElementById("leaflet-css")) return;
     const link = document.createElement("link");
@@ -302,33 +335,26 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
     import("leaflet").then((L) => {
       const map = mapRef.current;
       if (!map) return;
-
-      if (riverGroupRef.current) {
-        if (showRivers) map.addLayer(riverGroupRef.current);
-        else map.removeLayer(riverGroupRef.current);
-        return;
-      }
-
+      if (riverGroupRef.current) { map.removeLayer(riverGroupRef.current); riverGroupRef.current = null; }
+      if (!showRivers) return;
       const group = L.layerGroup();
-      RIVERS.forEach(({ name, coords }) => {
-        const midIdx = Math.floor(coords.length / 2);
-        const line = L.polyline(coords, { color: "#3182ce", weight: 2, opacity: 0.7 });
-        line.bindTooltip(name, { permanent: true, direction: "center", className: "river-label" });
+      RIVERS.forEach((river) => {
+        const isCrit = river.name === "Surma" && surmaIsCritical;
+        const line = L.polyline(river.coords, {
+          color:   isCrit ? "#c0392b" : river.color,
+          weight:  isCrit ? 6 : river.weight,
+          opacity: isCrit ? 0.95 : river.opacity,
+        });
+        line.bindTooltip(river.name, {
+          permanent: true, direction: "center",
+          className: `river-label${isCrit ? " critical" : ""}`,
+        });
         group.addLayer(line);
-        const mid = coords[midIdx];
-        L.marker(mid as [number, number], {
-          icon: L.divIcon({
-            html: `<span class="river-name-label">${name}</span>`,
-            className: "",
-            iconSize: [60, 16],
-            iconAnchor: [30, 8],
-          }),
-        }).addTo(group);
       });
       riverGroupRef.current = group;
-      if (showRivers) group.addTo(map);
+      group.addTo(map);
     });
-  }, [showRivers, mapReady]);
+  }, [showRivers, surmaIsCritical, mapReady]);
 
   /* ── Flow arrow layer ──────────────────────── */
   useEffect(() => {
@@ -443,11 +469,11 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
           .sort((a, b) => new Date(b.reading_time).getTime() - new Date(a.reading_time).getTime())[0];
 
         const icon = L.divIcon({
-          html:        `<div class="marker-gauge"></div>`,
+          html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;"><div class="marker-gauge"></div><span style="font-size:9px;font-weight:700;color:#1a56a0;white-space:nowrap;text-shadow:0 0 3px white,0 0 3px white;font-family:var(--font-source-code-pro),monospace;max-width:80px;overflow:hidden;text-overflow:ellipsis;">${station.station_name}</span></div>`,
           className:   "",
-          iconSize:    [10, 10],
-          iconAnchor:  [5, 5],
-          popupAnchor: [0, -6],
+          iconSize:    [80, 30],
+          iconAnchor:  [40, 7],
+          popupAnchor: [0, -14],
         });
 
         const marker = L.marker([station.latitude, station.longitude], { icon });
@@ -471,16 +497,6 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
     textAlign: "center" as const,
     lineHeight: 1.2,
   });
-
-  // Determine if any Surma-basin upazila is critical (for legend color)
-  const surmaIsCritical = predictions.some(
-    (p) =>
-      p.risk_level === "critical" &&
-      (p.upazila.toLowerCase().includes("sylhet") ||
-        p.upazila.toLowerCase().includes("sunamganj") ||
-        p.district?.toLowerCase().includes("sylhet") ||
-        p.district?.toLowerCase().includes("sunamganj"))
-  );
 
   return (
     <div ref={containerRef} style={{ position: "relative", height: "100%", width: "100%" }}>
@@ -595,32 +611,32 @@ export function FloodMap({ predictions, stations, readings, onUpazilaSelect, isL
           background: #cbd5e0; border-radius: 50%; border: 2px solid white;
           animation: skeletonPulse 1.5s ease-in-out infinite;
         }
-        .river-name-label {
-          font-size: 10px; font-weight: 700; color: #2b6cb0;
-          text-shadow: 0 0 3px white, 0 0 3px white;
-          white-space: nowrap; pointer-events: none;
-          font-family: var(--font-source-code-pro), monospace;
-        }
         .leaflet-tooltip.river-label {
           background: transparent; border: none; box-shadow: none;
-          font-size: 10px; font-weight: 700; color: #2b6cb0;
-          text-shadow: 0 0 3px white;
+          font-size: 13px; font-weight: 700; color: #2b6cb0;
+          text-shadow: 1px 1px 0 white, -1px -1px 0 white, 1px -1px 0 white, -1px 1px 0 white;
+          pointer-events: none;
+        }
+        .leaflet-tooltip.river-label.critical {
+          color: #c0392b;
         }
         .flow-arrow {
-          width: 20px; height: 20px;
           display: flex; align-items: center; justify-content: center;
+          animation: flowMove 1.5s ease-in-out infinite;
+        }
+        .flow-arrow.normal {
           animation: flowMove 1.5s ease-in-out infinite;
         }
         .flow-arrow.critical {
           animation: flowMoveCritical 0.8s ease-in-out infinite;
         }
         @keyframes flowMove {
-          0%, 100% { opacity: 0.4; transform: translateY(0px); }
-          50%       { opacity: 1;   transform: translateY(-3px); }
+          0%, 100% { opacity: 0.5; transform: translateY(0px); }
+          50%       { opacity: 1;   transform: translateY(-4px); }
         }
         @keyframes flowMoveCritical {
-          0%, 100% { opacity: 0.6; transform: translateY(0px); }
-          50%       { opacity: 1;   transform: translateY(-5px); }
+          0%, 100% { opacity: 0.7; transform: translateY(0px) scale(1); }
+          50%       { opacity: 1;   transform: translateY(-6px) scale(1.08); }
         }
       `}</style>
     </div>

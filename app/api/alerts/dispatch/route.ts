@@ -38,11 +38,17 @@ export async function POST(req: NextRequest) {
       const results = [];
       for (const prediction of unalertes) {
         const p = prediction as FloodPrediction;
+        console.log(`[DISPATCH] Sending SMS for ${p.upazila} (${p.risk_level})`);
         const smsResult = await sendSMSAlert(p);
+        if (smsResult.errors.length) console.error("[DISPATCH] SMS errors:", smsResult.errors);
+        else console.log(`[DISPATCH] SMS ok — SID=${smsResult.twilioSid}`);
         results.push({ upazila: p.upazila, channel: "sms", ...smsResult });
 
         if (p.risk_level === "critical") {
+          console.log(`[DISPATCH] Sending WhatsApp for ${p.upazila}`);
           const waResult = await sendWhatsAppAlert(p);
+          if (waResult.errors.length) console.error("[DISPATCH] WhatsApp errors:", waResult.errors);
+          else console.log(`[DISPATCH] WhatsApp ok — SID=${waResult.twilioSid}`);
           results.push({ upazila: p.upazila, channel: "whatsapp", ...waResult });
         }
       }
@@ -71,15 +77,19 @@ export async function POST(req: NextRequest) {
     const results = [];
     for (const channel of channels) {
       if (channel === "sms") {
+        console.log(`[DISPATCH] Manual SMS for ${prediction.upazila} (${prediction.risk_level})`);
         const r = await sendSMSAlert(prediction);
+        if (r.errors.length) console.error("[DISPATCH] SMS errors:", r.errors);
         results.push({ channel, ...r });
       } else if (channel === "whatsapp") {
+        console.log(`[DISPATCH] Manual WhatsApp for ${prediction.upazila}`);
         const r = await sendWhatsAppAlert(prediction);
+        if (r.errors.length) console.error("[DISPATCH] WhatsApp errors:", r.errors);
         results.push({ channel, ...r });
       }
     }
 
-    return NextResponse.json({ prediction_id, dispatched: results });
+    return NextResponse.json({ prediction_id, message: "Dispatched", dispatched: results });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

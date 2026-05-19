@@ -654,16 +654,65 @@ export default function DashboardContent() {
   }, [sendBrowserNotification]);
 
   const handleLiveMode = useCallback(async () => {
+    // 1. Stop all alerts immediately
     stopSiren();
     setAlarmActive(false);
     stopFaviconAlert();
     stopTitleAlert();
     document.body.classList.remove("alert-mode");
     setAlertMode(false);
+
+    // 2. Clear historical state — wipe 2022 predictions from UI right away
     setIsHistoricalMode(false);
-    skipNextAudioRef.current = true;
-    await fetchDashboardData();
-  }, [fetchDashboardData]);
+    setPredictions([]);
+    setCriticalDismissed(new Set());
+    skipNextAudioRef.current = true; // don't re-trigger audio for incoming live data
+
+    // 3. Show loading state
+    setIsSyncing(true);
+    setSyncMessage(lang === "bn" ? "লাইভ ডেটা লোড হচ্ছে…" : "Loading live data…");
+
+    try {
+      // 4. Fetch latest live predictions from DB
+      const res = await fetch("/api/agent");
+      const data = await res.json();
+
+      if (data.predictions && data.predictions.length > 0) {
+        setPredictions(data.predictions);
+      } else {
+        // No live predictions in DB — generate a quick one
+        setSyncMessage(lang === "bn" ? "লাইভ পূর্বাভাস তৈরি হচ্ছে…" : "Generating live predictions…");
+        const syncRes = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "single", upazila: "Sylhet Sadar", district: "Sylhet" }),
+        });
+        const syncData = await syncRes.json();
+        if (syncData.prediction) {
+          setPredictions([syncData.prediction as FloodPrediction]);
+        }
+      }
+
+      // Also refresh stations and alerts
+      const [stRes, aRes, srRes] = await Promise.all([
+        fetch("/api/stations"),
+        fetch("/api/alerts"),
+        fetch("/api/stations/readings"),
+      ]);
+      const [sData, aData, srData] = await Promise.all([
+        stRes.json(), aRes.json(), srRes.json(),
+      ]);
+      setStations(sData.stations ?? []);
+      setAlerts(aData.alerts ?? []);
+      if (srData.readings) setReadings(srData.readings as RiverReading[]);
+      setLastSyncTime(new Date());
+    } catch (err) {
+      console.error("[LIVE MODE ERROR]", err);
+    } finally {
+      setIsSyncing(false);
+      setSyncMessage("");
+    }
+  }, [lang]);
 
   /* ── Scenario tester ──────────────────── */
   const handleScenario = useCallback(async () => {

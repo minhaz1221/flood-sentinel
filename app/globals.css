@@ -313,47 +313,52 @@ p  { font-size: 13px; line-height: 1.6; color: #4a5568; margin: 0; }
 
 /* ── Risk map markers ───────────────────────────── */
 @keyframes markerPulse {
-  0%   { transform: translate(-50%, -50%) scale(0.8); opacity: 0.8; }
-  100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0;   }
+  0%   { transform: translate(-50%, -50%) scale(0.7); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0;   }
 }
-.marker-critical-wrapper { position: relative; width: 44px; height: 44px; }
+/* CRITICAL — 52px wrapper, double pulse rings */
+.marker-critical-wrapper { position: relative; width: 52px; height: 52px; }
 .marker-critical-pulse {
   position: absolute; top: 50%; left: 50%;
-  width: 44px; height: 44px; border-radius: 50%;
-  background: rgba(192,57,43,0.35);
-  animation: markerPulse 1.4s ease-out infinite;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(192,57,43,0.4);
+  animation: markerPulse 1.2s ease-out infinite;
 }
 .marker-critical-pulse-2 {
   position: absolute; top: 50%; left: 50%;
-  width: 44px; height: 44px; border-radius: 50%;
-  background: rgba(192,57,43,0.2);
-  animation: markerPulse 1.4s ease-out 0.7s infinite;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(192,57,43,0.22);
+  animation: markerPulse 1.2s ease-out 0.6s infinite;
 }
 .marker-critical-dot {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 24px; height: 24px; border-radius: 50%;
+  width: 28px; height: 28px; border-radius: 50%;
   background: #c0392b; border: 3px solid white;
   display: flex; align-items: center; justify-content: center;
-  color: white; font-weight: 700; font-size: 13px;
-  box-shadow: 0 2px 8px rgba(192,57,43,0.6); z-index: 2;
+  color: white; font-weight: 900; font-size: 14px;
+  box-shadow: 0 3px 16px rgba(192,57,43,0.7), 0 0 0 3px rgba(192,57,43,0.3);
+  z-index: 2;
 }
-.marker-high-wrapper { position: relative; width: 34px; height: 34px; }
+/* HIGH — 40px wrapper, 26px dot */
+.marker-high-wrapper { position: relative; width: 40px; height: 40px; }
 .marker-high-dot {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 20px; height: 20px; border-radius: 50%;
-  background: #e67e22; border: 2px solid white;
-  box-shadow: 0 1px 5px rgba(230,126,34,0.55);
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #e67e22; border: 3px solid white;
+  box-shadow: 0 2px 10px rgba(230,126,34,0.65);
 }
-.marker-medium-wrapper { position: relative; width: 28px; height: 28px; }
+/* MEDIUM — 32px wrapper, 20px dot */
+.marker-medium-wrapper { position: relative; width: 32px; height: 32px; }
 .marker-medium-dot {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #f39c12; border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(243,156,18,0.45);
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #f39c12; border: 2.5px solid white;
+  box-shadow: 0 1px 6px rgba(243,156,18,0.55);
 }
+/* LOW — unchanged */
 .marker-low-wrapper { position: relative; width: 22px; height: 22px; }
 .marker-low-dot {
   position: absolute; top: 50%; left: 50%;
@@ -362,10 +367,11 @@ p  { font-size: 13px; line-height: 1.6; color: #4a5568; margin: 0; }
   background: #27ae60; border: 2px solid white;
   box-shadow: 0 1px 3px rgba(39,174,96,0.4);
 }
+/* Gauge station dot (legacy — replaced by inline station labels) */
 .marker-gauge {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: #003d82; border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0,61,130,0.35);
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #1a56a0; border: 2.5px solid white;
+  box-shadow: 0 2px 6px rgba(26,86,160,0.5);
 }
 
 /* ── Emergency flash & ticker ───────────────────── */

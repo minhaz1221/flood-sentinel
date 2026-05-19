@@ -1,6 +1,6 @@
 import twilio from "twilio";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateBengaliAlert, generateEnglishAlert } from "./templates";
+import { generateBengaliAlert, generateCleanBengaliAlert, generateEnglishAlert } from "./templates";
 import type { FloodPrediction, RiskLevel } from "@/lib/types";
 
 export interface AlertResult {
@@ -50,6 +50,7 @@ async function logAlertSent(
       recipient_count: recipientCount,
       twilio_sid: twilioSid,
       status,
+      sent_at: new Date().toISOString(),
     });
   } catch { /* log failure is non-fatal */ }
 }
@@ -69,29 +70,34 @@ export async function sendSMSAlert(prediction: FloodPrediction): Promise<AlertRe
     return { success: false, recipientCount: 0, message: "TWILIO_PHONE_NUMBER not set", errors: [] };
   }
 
-  const templateData = {
-    upazila: prediction.upazila,
-    district: prediction.district,
-    risk_level: prediction.risk_level,
-    risk_score: prediction.risk_score,
-    risk_48h: prediction.risk_48h ?? prediction.risk_level,
-    reasoning_bn: prediction.reasoning_bn ?? "",
-  };
-  const messageBn = generateBengaliAlert(templateData);
-  const messageEn = generateEnglishAlert(templateData);
+  const messageBn = generateCleanBengaliAlert(prediction);
+  const messageEn = generateEnglishAlert(prediction);
 
   const client = getTwilioClient();
+
+  const results = await Promise.allSettled(
+    recipients.map(async (to) => {
+      const toClean = to.replace(/\s+/g, "");
+      console.log(`[SMS] Sending to ${toClean}…`);
+      const msg = await client.messages.create({ body: messageBn, from: fromNumber, to: toClean });
+      console.log(`[SMS] Sent to ${toClean}: SID=${msg.sid}`);
+      return msg.sid;
+    })
+  );
+
   const errors: string[] = [];
   let lastSid: string | null = null;
   let successCount = 0;
 
-  for (const to of recipients) {
-    try {
-      const msg = await client.messages.create({ body: messageBn, from: fromNumber, to });
-      lastSid = msg.sid;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status === "fulfilled") {
+      lastSid = r.value;
       successCount++;
-    } catch (err) {
-      errors.push(`${to}: ${err instanceof Error ? err.message : String(err)}`);
+    } else {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.error(`[SMS] Failed to ${recipients[i]}: ${msg}`);
+      errors.push(`${recipients[i]}: ${msg}`);
     }
   }
 
@@ -132,24 +138,33 @@ export async function sendWhatsAppAlert(prediction: FloodPrediction): Promise<Al
     reasoning_bn: prediction.reasoning_bn ?? "",
   };
   const messageBn = generateBengaliAlert(templateData);
-  const messageEn = generateEnglishAlert(templateData);
+  const messageEn = generateEnglishAlert(prediction);
 
   const client = getTwilioClient();
+
+  const results = await Promise.allSettled(
+    recipients.map(async (recipient) => {
+      const to = `whatsapp:${recipient}`;
+      console.log(`[WhatsApp] Sending to ${recipient}…`);
+      const msg = await client.messages.create({ body: messageBn, from, to });
+      console.log(`[WhatsApp] Sent to ${recipient}: SID=${msg.sid}`);
+      return msg.sid;
+    })
+  );
+
   const errors: string[] = [];
   let lastSid: string | null = null;
   let successCount = 0;
 
-  for (const recipient of recipients) {
-    try {
-      const msg = await client.messages.create({
-        body: messageBn,
-        from,
-        to: `whatsapp:${recipient}`,
-      });
-      lastSid = msg.sid;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status === "fulfilled") {
+      lastSid = r.value;
       successCount++;
-    } catch (err) {
-      errors.push(`${recipient}: ${err instanceof Error ? err.message : String(err)}`);
+    } else {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.error(`[WhatsApp] Failed to ${recipients[i]}: ${msg}`);
+      errors.push(`${recipients[i]}: ${msg}`);
     }
   }
 
