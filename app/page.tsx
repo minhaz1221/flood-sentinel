@@ -26,6 +26,7 @@ import { buildReplayPredictions, SYLHET_2022_TIMELINE, HERO_HOUR } from "@/lib/r
 import { ReplayBanner } from "@/components/ReplayBanner";
 import { ReplayToolbar } from "@/components/ReplayToolbar";
 import { CriticalFiredModal } from "@/components/CriticalFiredModal";
+import { DemoHeroBanner } from "@/components/DemoHeroBanner";
 
 const FloodMap = dynamic(
   () => import("@/components/map/FloodMap").then((m) => ({ default: m.FloodMap })),
@@ -359,6 +360,10 @@ export default function DashboardContent() {
 
   const [alarmActive, setAlarmActive] = useState(false);
   const [alertMode, setAlertMode]     = useState(false);
+  const [heroDismissed, setHeroDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("floodsentinel_hero_dismissed") === "1";
+  });
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncMessage, setSyncMessage]   = useState("");
 
@@ -626,10 +631,17 @@ export default function DashboardContent() {
     return () => window.removeEventListener("keydown", handler);
   }, [replay.isActive, replay.stop]);
 
+  /* ── Hero banner dismiss ────────────────── */
+  const dismissHero = useCallback(() => {
+    setHeroDismissed(true);
+    localStorage.setItem("floodsentinel_hero_dismissed", "1");
+  }, []);
+
   /* ── Historical replay ─────────────────── */
   const handleHistoricalReplay = useCallback(() => {
+    dismissHero();
     replay.start();
-  }, [replay.start]);
+  }, [dismissHero, replay.start]);
 
   const handleLiveMode = useCallback(async () => {
     // Stop replay if active
@@ -919,8 +931,13 @@ export default function DashboardContent() {
         </div>
       </div>
 
+      {/* ── Hero CTA banner (cold start, dismissable) ── */}
+      {!replay.isActive && !heroDismissed && (
+        <DemoHeroBanner onReplay={handleHistoricalReplay} onDismiss={dismissHero} />
+      )}
+
       {/* ── KPI cards ─────────────────────────── */}
-      <div style={{ background: replay.isActive ? "#FFFBEB" : "var(--bg-surface)", borderBottom: "1px solid var(--border-light)", padding: "10px 20px", display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, flexShrink: 0, transition: "background 0.4s" }}>
+      <div className="kpi-grid" style={{ background: replay.isActive ? "#FFFBEB" : "var(--bg-surface)", borderBottom: "1px solid var(--border-light)", padding: "10px 20px", display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, flexShrink: 0, transition: "background 0.4s" }}>
         <KPICard label={lang === "bn" ? "বিপদজনক এলাকা" : "Critical Zones"} value={displayCritCount} color={displayCritCount > 0 ? "#c0392b" : "#27ae60"} sub={displayCritCount > 0 ? (lang === "bn" ? "জরুরি সতর্কতা" : "Immediate action") : (lang === "bn" ? "স্বাভাবিক" : "All clear")} />
         <KPICard label={lang === "bn" ? "উচ্চ ঝুঁকি" : "High Risk Zones"} value={displayHighCount} color="#e67e22" />
         <KPICard label={lang === "bn" ? "SMS পাঠানো" : "SMS Alerts Sent"} value={displaySmsCount} color="#1a56a0" />
@@ -933,7 +950,7 @@ export default function DashboardContent() {
       {!replay.isActive && <AdvanceWarningBanner show={false} />}
 
       {/* ── Main: map (60%) + alert feed (40%) ── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: "500px" }}>
+      <div className="dashboard-main" style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: "500px" }}>
         {/* Map */}
         <div style={{ flex: 6, position: "relative", overflow: "hidden", height: "calc(100vh - 180px)", minHeight: 500 }}>
           <FloodMap
