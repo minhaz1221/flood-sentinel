@@ -24,7 +24,7 @@ const sourceCodePro = Source_Code_Pro({
   display: "swap",
 });
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://flood-sentinel.vercel.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://flood-sentinel.devixus.com";
 
 export const metadata: Metadata = {
   title: "Flood Sentinel — National Flood Early Warning System, Bangladesh",
