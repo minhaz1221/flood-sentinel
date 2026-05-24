@@ -6,23 +6,22 @@
 - [ ] Supabase schema applied (`001_initial_schema.sql`)
 - [ ] River stations seeded (`001_river_stations.sql`)
 - [ ] `npm run build` passes with 0 errors
-- [ ] `node -e "require('./vercel.json')"` returns no error
-- [ ] GitLab repo created and code pushed
+- [ ] GitHub repo created and code pushed
 
 ## Vercel Setup
 
 ### 1. Connect Repository
 1. Go to [vercel.com/new](https://vercel.com/new)
-2. Import from **GitLab** (not GitHub — required for GitLab partner integration)
+2. Import from **GitHub**
 3. Select `flood-sentinel` repository
 4. Framework preset: **Next.js** (auto-detected)
 
 ### 2. Environment Variables
-Add all variables from `.env.local` in Vercel dashboard:
+Add all variables in the Vercel dashboard:
 - Settings → Environment Variables
-- Add each key/value pair
 - Set scope: Production + Preview + Development
-- **Do NOT** add `NEXT_PUBLIC_APP_URL` as localhost — use your Vercel URL
+- **Do NOT** add `NEXT_PUBLIC_APP_URL` as localhost — use your production URL
+- **ElevenLabs:** use `ELEVENLABS_API_KEY` (no `NEXT_PUBLIC_` prefix — server-side only)
 
 ### 3. Deploy Settings
 - Root Directory: `/` (default)
@@ -42,10 +41,10 @@ git push origin main
 
 ### 5. Post-Deploy Steps
 
-After first successful deploy to `https://your-app.vercel.app`:
+After first successful deploy to `https://flood-sentinel.devixus.com`:
 
 ```bash
-PROD_URL=https://your-app.vercel.app
+PROD_URL=https://flood-sentinel.devixus.com
 
 # a) Seed historical flood data (one-time)
 curl -X POST "$PROD_URL/api/seed/historical" \
@@ -66,14 +65,14 @@ curl "$PROD_URL/api/health"
 
 ### 6. Verify Cron Jobs
 1. Vercel Dashboard → your project → **Cron Jobs** tab
-2. You should see 3 jobs:
-   - `/api/cron/sync` — `0 * * * *` (top of each hour)
-   - `/api/cron/predict` — `15 * * * *` (:15 each hour)
-   - `/api/cron/alert` — `30 * * * *` (:30 each hour)
+2. You should see 3 jobs (daily UTC schedule per `vercel.json`):
+   - `/api/cron/sync` — `0 0 * * *` (00:00 UTC daily)
+   - `/api/cron/predict` — `0 1 * * *` (01:00 UTC daily)
+   - `/api/cron/alert` — `0 2 * * *` (02:00 UTC daily)
 3. Click **Trigger** on `/api/cron/sync` to test manually
 
 ### 7. Verify Dashboard
-- Open `https://your-app.vercel.app`
+- Open `https://flood-sentinel.devixus.com`
 - Dark navy dashboard should render
 - CartoDB map of Bangladesh visible
 - DB Connected indicator (green dot) in header
@@ -84,39 +83,52 @@ curl "$PROD_URL/api/health"
 | Issue | Fix |
 |-------|-----|
 | `Invalid supabaseUrl` | Check `NEXT_PUBLIC_SUPABASE_URL` in Vercel env vars |
-| Cron jobs not running | Verify `CRON_SECRET` matches requests; check Vercel cron logs |
-| Gemini errors | Verify `GEMINI_API_KEY` has billing enabled for 1.5 Pro |
+| Cron jobs not running | Verify `CRON_SECRET` matches request header; check Vercel cron logs |
+| Gemini errors | Verify `GEMINI_API_KEY` has billing enabled for Gemini 2.5 Flash Lite |
 | Map not loading | CartoDB tiles are free/keyless — check browser console for CORS |
 | Alerts not sending | Check `ALERT_RECIPIENTS` format: `+8801XXXXXXXXX,+8801XXXXXXXXX` |
-| GitLab incidents fail | Ensure `GITLAB_TOKEN` has `api` scope |
+| GitLab incidents fail | Ensure `GITLAB_TOKEN` has `api` scope on the correct project |
+| Voice not playing | Ensure `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` are set (no `NEXT_PUBLIC_` prefix) |
+| Fivetran MCP errors | `FIVETRAN_API_KEY`/`FIVETRAN_API_SECRET` are optional — absence triggers graceful fallback |
 
 ## Environment Variable Reference
 
 ```bash
-# Core (required)
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-GEMINI_API_KEY=AIza...
+# Core — Supabase (required)
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
-# Alerts (required for Twilio)
-TWILIO_ACCOUNT_SID=ACxx...
-TWILIO_AUTH_TOKEN=xx...
-TWILIO_PHONE_NUMBER=+1415...
+# AI — Gemini (required)
+GEMINI_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Voice — ElevenLabs (optional; server-side only — do NOT use NEXT_PUBLIC_ prefix)
+ELEVENLABS_API_KEY=sk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ELEVENLABS_VOICE_ID=XXXXXXXXXXXXXXXXXXXXXXXX
+
+# Alerts — Twilio (optional)
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_PHONE_NUMBER=+14155552671
 TWILIO_WHATSAPP_NUMBER=14155238886
-ALERT_RECIPIENTS=+8801XXXXXXXXX
+ALERT_RECIPIENTS=+8801XXXXXXXXX,+8801YYYYYYYYY
 
-# Observability (required for Arize)
-ARIZE_API_KEY=xx...
-ARIZE_SPACE_ID=xx...
+# Observability — Arize Phoenix (optional; enables OTel tracing in production)
+ARIZE_API_KEY=ak-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ARIZE_SPACE_ID=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+NEXT_PUBLIC_ARIZE_DASHBOARD_URL=https://app.arize.com/organizations/xxx/spaces/xxx
 
-# GitLab incidents
-GITLAB_TOKEN=glpat-xx...
+# Incident management — GitLab (optional)
+GITLAB_TOKEN=glpat-XXXXXXXXXXXXXXXXXXXX
 GITLAB_PROJECT_ID=12345678
 
+# Pipeline — Fivetran MCP (optional; graceful fallback if absent)
+FIVETRAN_API_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+FIVETRAN_API_SECRET=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+FIVETRAN_GROUP_ID=xxxxxxxxxxxxxxxx
+
 # System
-CRON_SECRET=your_random_secret_32chars
+CRON_SECRET=your_random_secret_at_least_32_chars
 SEED_SECRET=flood_sentinel_seed_2026
-NEXT_PUBLIC_APP_URL=https://flood-sentinel.vercel.app
-NEXT_PUBLIC_ARIZE_DASHBOARD_URL=https://app.arize.com/organizations/xx/spaces/xx
+NEXT_PUBLIC_APP_URL=https://flood-sentinel.devixus.com
 ```
