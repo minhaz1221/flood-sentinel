@@ -323,7 +323,7 @@ function ArizeTracesContent() {
   const [expandedId, setExpandedId]       = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/agent")
+    fetch("/api/agent?mode=historical")
       .then((r) => r.json())
       .then((d) => setPredictions(d.predictions ?? []))
       .catch(() => {})

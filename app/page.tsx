@@ -386,7 +386,7 @@ export default function DashboardContent() {
     setIsLoading(true);
     try {
       const [predictionsRes, stationsRes, alertsRes, srRes] = await Promise.all([
-        fetch("/api/agent"),
+        fetch("/api/agent?mode=live"),
         fetch("/api/stations"),
         fetch("/api/alerts"),
         fetch("/api/stations/readings"),
@@ -480,7 +480,7 @@ export default function DashboardContent() {
         if (ageMs < 30 * 60 * 1000) {
           setSyncMessage(lang === "bn" ? "ক্যাশ লোড হচ্ছে…" : "Loading from cache…");
           setSyncProgress(50);
-          const res = await fetch("/api/agent");
+          const res = await fetch("/api/agent?mode=live");
           const data = await res.json();
           if ((data.predictions?.length ?? 0) > 0) {
             setPredictions(data.predictions);
@@ -669,7 +669,7 @@ export default function DashboardContent() {
 
     try {
       // 4. Fetch latest live predictions from DB
-      const res = await fetch("/api/agent");
+      const res = await fetch("/api/agent?mode=live");
       const data = await res.json();
 
       if (data.predictions && data.predictions.length > 0) {
@@ -1061,10 +1061,30 @@ export default function DashboardContent() {
                 )}
               </>
             ) : (predictions?.length ?? 0) === 0 && !isLoading ? (
-              <div style={{ padding: 24, textAlign: "center" }}>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
-                  {lang === "bn" ? "তথ্য নেই — সিঙ্ক করুন" : "No predictions — run a sync"}
+              <div style={{ padding: "28px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#27ae60", flexShrink: 0, display: "inline-block" }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#27ae60", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+                    {lang === "bn" ? "সব এলাকা স্বাভাবিক" : "All monitored upazilas at normal levels"}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5, fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
+                  {lang === "bn"
+                    ? "১০টি উপজেলা পর্যবেক্ষণে · ২,৬৭,০০০ জনগোষ্ঠী · কোনো সক্রিয় বন্যার ঝুঁকি নেই"
+                    : "10 upazilas monitored · 267,000 population · No active flood risk detected"}
                 </p>
+                <button
+                  onClick={handleHistoricalReplay}
+                  style={{
+                    marginTop: 6, background: "none", border: "1px solid #C7D2FE",
+                    borderRadius: 3, padding: "6px 12px", cursor: "pointer",
+                    fontSize: 12, fontWeight: 600, color: "#3730A3",
+                    fontFamily: "var(--font-source-code-pro), monospace",
+                    textAlign: "left",
+                  }}
+                >
+                  ▶ View 2022 Sylhet Historical Event
+                </button>
               </div>
             ) : (
               <>

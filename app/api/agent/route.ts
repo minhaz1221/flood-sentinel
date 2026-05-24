@@ -8,36 +8,41 @@ import { logPredictionTrace } from "@/lib/arize/trace";
 import { createFloodIncident } from "@/lib/gitlab/incidents";
 import type { AgentRequest, PredictionResult, FloodPrediction, GeminiKeySignal } from "@/lib/types";
 
-// GET — latest prediction per upazila (last 6 hours, fallback to most recent 100)
-export async function GET() {
+// GET — predictions with mode control
+// ?mode=live      → last 6h only, empty array if nothing (dashboard)
+// ?mode=historical → all rows, most recent 100 (predictions/traces/alerts pages)
+// no param        → same as live (safe default)
+export async function GET(request: NextRequest) {
   try {
+    const mode = new URL(request.url).searchParams.get("mode") ?? "live";
     const supabase = createAdminClient();
-    const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
 
-    // Try recent 6-hour window first
-    let { data, error } = await supabase
-      .from("flood_predictions")
-      .select()
-      .gte("predicted_at", since)
-      .order("predicted_at", { ascending: false });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let rows: any[] = [];
 
-    if (error) throw error;
-
-    // Fallback: if no recent predictions exist (e.g. seeded/historical data),
-    // return the most recent 100 rows across all time
-    if (!data || data.length === 0) {
-      const fallback = await supabase
+    if (mode === "historical") {
+      const { data, error } = await supabase
         .from("flood_predictions")
         .select()
         .order("predicted_at", { ascending: false })
         .limit(100);
-      if (fallback.error) throw fallback.error;
-      data = fallback.data ?? [];
+      if (error) throw error;
+      rows = data ?? [];
+    } else {
+      // live — strict 6h window, no fallback
+      const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("flood_predictions")
+        .select()
+        .gte("predicted_at", since)
+        .order("predicted_at", { ascending: false });
+      if (error) throw error;
+      rows = data ?? [];
     }
 
     // Deduplicate: keep latest per upazila
-    const latestByUpazila = new Map<string, typeof data[0]>();
-    for (const row of data ?? []) {
+    const latestByUpazila = new Map<string, typeof rows[0]>();
+    for (const row of rows) {
       if (!latestByUpazila.has(row.upazila)) latestByUpazila.set(row.upazila, row);
     }
 

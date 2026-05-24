@@ -50,7 +50,7 @@ function AlertsContent() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/agent").then((r) => r.json()),
+      fetch("/api/agent?mode=historical").then((r) => r.json()),
       fetch("/api/alerts").then((r) => r.json()),
       fetch("/api/alerts/kpis").then((r) => r.json()),
     ])

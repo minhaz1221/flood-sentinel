@@ -322,7 +322,7 @@ function DataSourcesContent() {
   useEffect(() => {
     Promise.all([
       fetch("/api/stations").then((r) => r.json()),
-      fetch("/api/agent").then((r) => r.json()),
+      fetch("/api/agent?mode=historical").then((r) => r.json()),
       fetch("/api/sync-logs").then((r) => r.json()),
       fetch("/api/data-sources/stats").then((r) => r.json()),
     ])
