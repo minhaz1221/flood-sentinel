@@ -8,6 +8,7 @@ import {
   BwdbIcon, RainfallIcon, ForecastIcon, HistoricalIcon,
   ElevationIcon, BoundariesIcon, BmdIcon, CopernicusIcon,
 } from "@/components/icons/DataSourceIcons";
+import { StatCard } from "@/components/StatCard";
 
 interface DbStats {
   river_readings:    number;
@@ -69,18 +70,6 @@ function fmtLastSync(entry: SyncLogEntry | undefined, lang: string, staticDatase
   return { text, muted: false };
 }
 
-function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div style={{ background: "var(--bg-white)", border: "1px solid var(--border-light)", padding: 16, display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 11, fontFamily: "var(--font-source-code-pro), monospace", textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--text-muted)" }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 28, fontWeight: 700, color, fontFamily: "var(--font-merriweather), serif", lineHeight: 1 }}>
-        {value}
-      </span>
-    </div>
-  );
-}
 
 function SourceCard({
   source,
@@ -437,7 +426,7 @@ function DataSourcesContent() {
 
       {/* Stats row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, padding: "20px 24px" }}>
-        <StatCard label={lang === "bn" ? "সক্রিয় পাইপলাইন" : "Active Pipelines"} value="8" color="var(--bg-header)" />
+        <StatCard label={lang === "bn" ? "সক্রিয় পাইপলাইন" : "Active Pipelines"} value={`${sources.filter(s => s.status === "HEALTHY" || s.status === "SYNCING").length} / ${sources.length}`} color="var(--bg-header)" />
         <StatCard label={lang === "bn" ? "পাইপলাইন স্বাস্থ্য" : "Pipeline Health"} value="87.5%" color="#27ae60" />
         <StatCard label={lang === "bn" ? "রেকর্ড সিঙ্ক (২৪ঘ)" : "Records Synced (24h)"} value={loading ? "—" : recordsFmt} color="var(--text-secondary)" />
         <StatCard label={lang === "bn" ? "ডেটা উৎস" : "Data Sources"} value={lang === "bn" ? "৬ লাইভ · ২ পরিকল্পিত" : "6 Live · 2 Planned"} color="var(--text-secondary)" />

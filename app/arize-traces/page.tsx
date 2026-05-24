@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { safeFormatDate } from "@/lib/utils/dateFormat";
 import { RiskBadge } from "@/components/dashboard/RiskBadge";
 import { useLang } from "@/lib/i18n/LangContext";
+import { StatCard } from "@/components/StatCard";
 import type { FloodPrediction, GeminiKeySignal } from "@/lib/types";
 
 const RISK_COLOR: Record<string, string> = {
@@ -345,7 +346,7 @@ function ArizeTracesContent() {
           {lang === "bn" ? "ট্রেস মনিটরিং" : "Arize Phoenix Observability"}
         </h2>
         <p style={{ margin: "2px 0 0", fontSize: 13, color: "#4a5568", fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
-          {lang === "bn" ? "এআই পর্যবেক্ষণ ও ট্রেস বিশ্লেষণ" : "এআই পর্যবেক্ষণ ও ট্রেস বিশ্লেষণ"}
+          {lang === "bn" ? "এআই পর্যবেক্ষণ ও ট্রেস বিশ্লেষণ" : "AI observability and trace analysis"}
         </p>
         <p style={{ margin: "2px 0 0", fontSize: 11, color: "#718096", fontFamily: "var(--font-source-code-pro), monospace" }}>
           Gemini 2.5 Flash · prediction traces · self-improving evaluation loop
@@ -353,18 +354,11 @@ function ArizeTracesContent() {
       </div>
 
       {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, padding: "20px 24px" }}>
-        {[
-          { label: lang === "bn" ? "মোট ট্রেস" : "Total Traces",         value: loading ? "—" : String(traceCount), color: "#718096"  },
-          { label: lang === "bn" ? "গড় লেটেন্সি" : "Avg Latency",       value: "4.2s",                             color: "#003d82"  },
-          { label: lang === "bn" ? "মূল্যায়ন নির্ভুলতা" : "Eval Accuracy", value: "94%",                          color: "#27ae60"  },
-          { label: lang === "bn" ? "প্রম্পট পুনরাবৃত্তি" : "Prompt Iterations", value: "7",                       color: "#718096"  },
-        ].map((card) => (
-          <div key={card.label} style={{ background: "white", border: "1px solid var(--border-light)", borderTop: `3px solid ${card.color}`, padding: "14px 16px" }}>
-            <p className="kpi-label">{card.label}</p>
-            <p className="kpi-value" style={{ color: card.color }}>{card.value}</p>
-          </div>
-        ))}
+      <div className="page-stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, padding: "20px 24px" }}>
+        <StatCard label={lang === "bn" ? "মোট ট্রেস" : "Total Traces"} value={loading ? "—" : String(traceCount)} color="#718096" />
+        <StatCard label={lang === "bn" ? "গড় লেটেন্সি" : "Avg Latency"} value="4.2s" color="#003d82" />
+        <StatCard label={lang === "bn" ? "মূল্যায়ন নির্ভুলতা" : "Eval Accuracy"} value="94%" color="#27ae60" />
+        <StatCard label={lang === "bn" ? "প্রম্পট পুনরাবৃত্তি" : "Prompt Iterations"} value="7" color="#718096" />
       </div>
 
       {/* Improvement strip */}
