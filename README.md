@@ -1,105 +1,109 @@
-# 🌊 Flood Sentinel
-### AI-Powered Hyperlocal Flood Warning System for Bangladesh
+# Flood Sentinel
 
-> Built for the **Google Cloud Rapid Agent Hackathon 2026**
+> AI flood early warning agent for Bangladesh. Detects flood risk 32+ hours before official BWDB warnings using real government river gauge data, NASA rainfall, and Gemini 2.5 Flash Lite.
+
+🌐 **Live demo:** https://flood-sentinel.devixus.com  
+📺 **Video walkthrough:** [TBD]  
+🏗️ **Built for:** [Google Cloud Rapid Agent Hackathon 2026](https://cloud.google.com)
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org)
-[![Gemini](https://img.shields.io/badge/Gemini-1.5_Pro-4285F4?logo=google)](https://ai.google.dev)
+[![Gemini](https://img.shields.io/badge/Gemini-2.5_Flash_Lite-4285F4?logo=google)](https://ai.google.dev)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase)](https://supabase.com)
-[![Arize](https://img.shields.io/badge/Arize-Phoenix-7C3AED)](https://arize.com)
+[![Arize](https://img.shields.io/badge/Arize-Phoenix_OTel-7C3AED)](https://arize.com)
 [![GitLab](https://img.shields.io/badge/GitLab-Incidents-FC6D26?logo=gitlab)](https://gitlab.com)
 [![Twilio](https://img.shields.io/badge/Twilio-SMS_+_WhatsApp-F22F46?logo=twilio)](https://twilio.com)
 [![Vercel](https://img.shields.io/badge/Vercel-Deployed-000000?logo=vercel)](https://vercel.com)
 
 ---
 
-## The Problem
+## What it does
 
-Bangladesh experiences severe flooding every monsoon season (June–October), killing hundreds and displacing millions annually. The 2022 Sylhet floods — the worst in 120 years — submerged 4 million people with only hours of warning. Current government systems issue district-level warnings covering thousands of square kilometres, leaving upazila-level communities (200,000–500,000 people each) with no actionable intelligence. By the time water reaches dangerous levels at downstream gauges, evacuation windows have already closed.
-
-## The Solution
-
-Flood Sentinel is a hyperlocal, AI-powered flood risk prediction system that delivers 72-hour risk forecasts at the upazila level — roughly 20× more granular than existing government warnings. It fuses real-time BWDB river gauge readings, Open-Meteo rainfall and GFS weather forecasts, and upstream propagation models into a Gemini 1.5 Pro reasoning engine that explains **why** a flood is coming in both English and Bengali — dispatching alerts via SMS and WhatsApp before water levels breach danger thresholds.
+Bangladesh experiences catastrophic monsoon floods every year — the 2022 Sylhet event, the worst in 120 years, submerged 4 million people with only hours of warning. Flood Sentinel fuses live river gauge readings scraped from the Bangladesh FFWC, hourly rainfall from Open-Meteo (NASA IMERG-backed), and 7-day GFS model forecasts into a Gemini 2.5 Flash Lite reasoning engine that issues 72-hour risk predictions at the upazila level — 20× more granular than existing government warnings. When risk hits CRITICAL, the system automatically creates a GitLab incident, dispatches Bengali-language SMS and WhatsApp alerts via Twilio, and plays a Bengali voice announcement via ElevenLabs — all within seconds of the prediction completing.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         DATA SOURCES                             │
-│  BWDB/FFWC river gauges   Open-Meteo rainfall  GFS forecast       │
-│        (scraped hourly)      (API, free)          (7-day daily)  │
-└──────────┬────────────────────┬─────────────────────┬───────────┘
-           │                   │                     │
-           ▼                   ▼                     ▼
-┌──────────────────────────────────────────────────────────────────┐
-│            Supabase PostgreSQL  (9 tables, RLS)                  │
-│  river_readings · rainfall_data · weather_forecasts · sync_logs  │
-│  flood_predictions · flood_events · alerts_sent · river_stations │
-└──────────────────────────────┬───────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                     GEMINI AGENT LAYER                           │
-│  aggregator.ts → 7 parallel queries + upstream topology          │
-│  prompts.ts    → Bangladesh flood context + escalation rules     │
-│  predict.ts    → Gemini 1.5 Pro JSON prediction (72h horizon)    │
-└──────────┬───────────────────────────────────┬───────────────────┘
-           │                                   │
-     ┌─────▼──────┐                    ┌───────▼───────┐
-     │   ARIZE    │                    │ ALERT ENGINE  │
-     │  OTel spans│                    │ Twilio SMS    │
-     │  eval loop │                    │ Twilio WA     │
-     └────────────┘                    │ GitLab issues │
-                                       └───────────────┘
-           │
-           ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                  DASHBOARD  (Next.js App Router)                  │
-│  CartoDB dark map · Risk markers · River charts · Bengali alerts  │
-│  UpazilaPanel · Arize panel · Historical 2022 replay scrubber    │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                          DATA SOURCES                               │
+│   BWDB/FFWC (scraped)  Open-Meteo (rainfall)  Open-Meteo (GFS)     │
+└──────────┬───────────────────────┬───────────────────────┬──────────┘
+           │                       │                       │
+           ▼                       ▼                       ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              Supabase PostgreSQL  (9 tables + RLS)                  │
+│  river_readings · rainfall_data · weather_forecasts · sync_logs     │
+│  flood_predictions · alerts_sent · river_stations · flood_events    │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+             ┌───────────────────▼──────────────────┐
+             │         Fivetran MCP Freshness        │
+             │   /api/mcp/fivetran → freshness check │
+             └───────────────────┬──────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   Gemini 2.5 Flash Lite Agent                       │
+│  aggregator.ts → 7 parallel queries + upstream topology            │
+│  predict.ts    → JSON prediction (risk_level, score, reasoning,    │
+│                  48h/72h outlook, bilingual key signals)            │
+└──────────────┬───────────────────────────────┬─────────────────────┘
+               │                               │
+        ┌──────▼──────┐               ┌────────▼──────────────┐
+        │  Arize OTel │               │    Alert Dispatch     │
+        │  OpenInf.   │               │  GitLab incidents     │
+        │  spans →    │               │  Twilio SMS / WA      │
+        │  Phoenix    │               │  ElevenLabs voice     │
+        └─────────────┘               └───────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                 Next.js Dashboard  (App Router)                     │
+│  Leaflet map · Risk markers · River charts · Bengali/English UI     │
+│  /predictions · /arize-traces · /alerts · /data-sources            │
+│  Historical 2022 Sylhet Replay (72h animated timeline)             │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Partner Integrations
+## What's Real vs Sandboxed
 
-### Google Cloud + Gemini 1.5 Pro
-Gemini 1.5 Pro is the **prediction brain**. `buildUpazilaContext()` assembles 7 parallel Supabase queries into a structured context — river gauge readings, upstream station states, 72-hour rainfall totals, GFS forecasts, and derived signals (water level % of danger threshold, trend direction, upstream threat flag). The system prompt encodes monsoon seasonality, corridor lag times (Surma: 6–14h, Jamuna: 8–20h), and Meghalaya's extreme Indian catchment effects. Gemini responds with structured JSON including bilingual reasoning and key signals.
+| Integration | Status | Notes |
+|---|---|---|
+| Gemini 2.5 Flash Lite | ✅ Live | Real predictions via `@google/generative-ai` v0.24.1 |
+| Supabase | ✅ Live | Postgres + RLS, 9 tables |
+| BWDB / FFWC scraper | ✅ Live | Real HTML scrape of `ffwc.gov.bd` |
+| Open-Meteo (rainfall + GFS) | ✅ Live | Free public API, no key required |
+| GitLab incidents | ✅ Live | Real `/api/v4/projects/:id/issues` calls for CRITICAL events |
+| ElevenLabs (Bengali voice) | ✅ Live | Bengali TTS via server-side proxy (`/api/voice/synthesize`) |
+| Fivetran MCP | ✅ Live | Custom MCP endpoint at `/api/mcp/fivetran`; graceful fallback if unconfigured |
+| Arize Phoenix OTel | ⚠️ Configured | OTLP exporter wired to `otlp.arize.com`; requires `ARIZE_API_KEY` + `ARIZE_SPACE_ID` in Vercel env |
+| Twilio SMS / WhatsApp | ⚠️ Sandboxed | Real `client.messages.create()` calls; Twilio trial blocks Bangladesh (+880) delivery |
 
-### Arize Phoenix
-Every prediction generates an OpenTelemetry span with **OpenInference semantic conventions** (`openinference.span.kind: "CHAIN"`, `input.value`, `output.value`). When flood events are confirmed in the database, `logAccuracyAnnotation()` logs evaluator spans (`eval.label: "correct" | "false_positive" | "missed"`, `eval.score`). This creates a **self-improving feedback loop** — Arize surfaces accuracy by risk level and `generateImprovementSuggestions()` recommends prompt tuning based on error patterns.
+## Tech Stack
 
-### GitLab — Incident Management
-When Gemini returns `risk_level: "critical"`, `createFloodIncident()` automatically opens a GitLab issue with a structured signal table, bilingual assessment, and a 6-item recommended actions checklist (EOC activation, evacuation orders, rescue boat pre-positioning). The hourly cron catches any unalerted critical predictions from the past 90 minutes, ensuring no event is missed.
+- **Framework:** Next.js 16 (App Router, TypeScript)
+- **Database:** Supabase (PostgreSQL + RLS, 9 tables)
+- **AI:** `@google/generative-ai` v0.24.1 → Gemini 2.5 Flash Lite
+- **Observability:** `@opentelemetry/sdk-node` v0.218.0 → Arize Phoenix
+- **Alerts:** `twilio` v6.0.2 (SMS + WhatsApp)
+- **Voice:** ElevenLabs v2 API (`eleven_multilingual_v2`)
+- **Maps:** `react-leaflet` v5 + CartoDB dark tiles
+- **Charts:** `recharts` v3
+- **HTML parsing:** `node-html-parser` v7 (BWDB scraper)
+- **UI:** Custom CSS design tokens, Noto Sans Bengali + Merriweather + Source Code Pro
 
-### Twilio — SMS + WhatsApp
-Bengali-language alerts dispatched to configurable recipient list. HIGH template gives 48h outlook; CRITICAL demands immediate evacuation. WhatsApp alerts sent only for CRITICAL via Twilio sandbox. All dispatched alerts logged to `alerts_sent` for full audit trail.
-
-## Demo: 2022 Sylhet Flood Replay
-
-**To run the historical demo:**
-1. Seed historical data: `curl -X POST http://localhost:3000/api/seed/historical`
-2. Click **⏪ Replay 2022 Sylhet Floods** at the bottom of the dashboard
-3. Press **Play** — timeline advances 1 day per 2 seconds
-4. Watch Sylhet Sadar escalate from LOW → MEDIUM → **CRITICAL** as the Surma River breaches 11.8m on June 16–17 (danger level ~8.5m)
-5. Peak flood dates (June 15–18) display a red banner: *"HISTORICAL FLOOD EVENT — Worst flooding in 120 years"*
-
-Expected predictions for `2022-06-16`:
-- **Sylhet Sadar**: CRITICAL (85–95/100)
-- **Sunamganj Sadar**: HIGH/CRITICAL (6h downstream lag)
-
-## Local Setup
+## Getting Started
 
 ```bash
 # 1. Clone and install
-git clone https://gitlab.com/your-org/flood-sentinel.git
+git clone https://github.com/minhaz1221/flood-sentinel.git
 cd flood-sentinel
 npm install
 
 # 2. Configure environment
-cp .env.local .env.local.backup
-# Edit .env.local with your credentials
+cp .env.example .env.local
+# Edit .env.local with your credentials (see Environment Variables below)
 
-# 3. Apply database schema (Supabase SQL editor)
+# 3. Apply database schema in Supabase SQL editor
 # supabase/migrations/001_initial_schema.sql
 # supabase/seeds/001_river_stations.sql
 
@@ -113,42 +117,102 @@ curl -X POST http://localhost:3000/api/agent \
   -H "Content-Type: application/json" -d '{"mode":"all"}'
 ```
 
-### Required Environment Variables
+## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
-| `GEMINI_API_KEY` | Google AI Studio key |
-| `TWILIO_ACCOUNT_SID` | Twilio account SID |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token |
-| `TWILIO_PHONE_NUMBER` | From number (E.164) |
-| `ALERT_RECIPIENTS` | Comma-separated E.164 recipient numbers |
-| `ARIZE_API_KEY` | Arize Cloud API key (production OTel) |
-| `ARIZE_SPACE_ID` | Arize space ID |
-| `GITLAB_TOKEN` | GitLab personal access token |
-| `GITLAB_PROJECT_ID` | GitLab project ID |
-| `CRON_SECRET` | Bearer token for Vercel cron auth |
-| `SEED_SECRET` | `flood_sentinel_seed_2026` |
+```bash
+# Core — Supabase (required)
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# AI — Gemini (required)
+GEMINI_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Voice — ElevenLabs (optional; server-side only — do NOT use NEXT_PUBLIC_ prefix)
+ELEVENLABS_API_KEY=sk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ELEVENLABS_VOICE_ID=XXXXXXXXXXXXXXXXXXXXXXXX
+
+# Alerts — Twilio (optional)
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_PHONE_NUMBER=+14155552671
+TWILIO_WHATSAPP_NUMBER=14155238886
+ALERT_RECIPIENTS=+8801XXXXXXXXX,+8801YYYYYYYYY
+
+# Observability — Arize Phoenix (optional; enables OTel in production)
+ARIZE_API_KEY=ak-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ARIZE_SPACE_ID=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+NEXT_PUBLIC_ARIZE_DASHBOARD_URL=https://app.arize.com/organizations/xxx/spaces/xxx
+
+# Incident management — GitLab (optional)
+GITLAB_TOKEN=glpat-XXXXXXXXXXXXXXXXXXXX
+GITLAB_PROJECT_ID=12345678
+
+# Pipeline — Fivetran MCP (optional; graceful fallback if absent)
+FIVETRAN_API_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+FIVETRAN_API_SECRET=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+FIVETRAN_GROUP_ID=xxxxxxxxxxxxxxxx
+
+# System
+CRON_SECRET=your_random_secret_at_least_32_chars
+SEED_SECRET=flood_sentinel_seed_2026
+NEXT_PUBLIC_APP_URL=https://flood-sentinel.devixus.com
+```
+
+## Data Sources
+
+| Source | Type | Frequency | Records |
+|---|---|---|---|
+| BWDB / FFWC | River gauge HTML scrape | Daily cron | 10 stations |
+| Open-Meteo IMERG | NASA rainfall (via Open-Meteo) | Daily cron | ~2,800 records |
+| Open-Meteo GFS | NOAA GFS model (via Open-Meteo) | Daily cron | ~1,200 records |
+| Historical events | Seeded 2022 Sylhet timeline | Static | 7 keyframes |
+| SRTM Elevation | Static terrain data | Static | 4.8M grid points |
+
+## How the Agent Works
+
+1. **MCP freshness check** — before every prediction batch, `checkDataFreshness()` calls the Fivetran MCP endpoint (`/api/mcp/fivetran`) to verify all data sources synced within the last 6 hours. Stale sources are injected into the Gemini prompt as a context warning.
+
+2. **Context assembly** — `buildUpazilaContext()` runs 7 parallel Supabase queries: river gauge readings + trend direction, upstream station states, 24h/48h/72h rainfall totals, GFS 7-day forecast, and derived signals (water level % of danger threshold, upstream threat flag, monsoon season flag).
+
+3. **Gemini inference** — the compact context is sent to `gemini-2.5-flash-lite` with structured JSON output mode and an 8-second timeout. The model returns `risk_level`, `risk_score` (0–100), 48h/72h outlooks, bilingual reasoning (English + বাংলা), and a `key_signals` array.
+
+4. **OTel trace** — `logPredictionTrace()` emits an OpenInference-tagged span (`openinference.span.kind: "LLM"`, `input.value`, `output.value`, `llm.system: "gemini"`) that the OTLP exporter ships to Arize Phoenix in production.
+
+5. **Alert dispatch** — CRITICAL predictions trigger in parallel: a GitLab issue (signal table + bilingual reasoning + 6-item action checklist), Twilio SMS/WhatsApp to `ALERT_RECIPIENTS`, and an ElevenLabs Bengali voice announcement via the browser.
+
+6. **Persist** — the prediction is written to `flood_predictions` (Supabase), deduplicated by upazila, and visible on `/predictions` within seconds.
+
+## Demo Walkthrough
+
+1. Open https://flood-sentinel.devixus.com
+2. Dashboard shows live state — all-green means no current flood risk
+3. Click **▶ View 2022 Sylhet Historical Event** on the risk panel
+4. Press **Play** — 72-hour timeline animates at 1 real second = 1 simulated hour
+5. Watch Sylhet Sadar escalate LOW → MEDIUM → CRITICAL as the Surma River breaches 11.8m
+6. Explore `/predictions` for the full AI prediction log with risk scores
+7. Explore `/arize-traces` for OTel trace visualization and model accuracy
+8. Explore `/data-sources` for live sync status and data pipeline health
+9. Explore `/alerts` for the SMS/WhatsApp dispatch log
 
 ## API Reference
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/agent` | GET | Latest predictions (last 6h, deduplicated) |
-| `/api/agent` | POST | `{mode:"single"\|"all"\|"historical",targetDate?}` |
-| `/api/agent/evaluate` | GET | Accuracy report vs ground truth |
-| `/api/stations` | GET | All active river stations |
+| `/api/agent` | GET | Latest predictions (`?mode=live` or `?mode=historical`) |
+| `/api/agent` | POST | `{mode:"single"\|"all"\|"historical", targetDate?}` |
+| `/api/agent/evaluate` | GET | Accuracy report vs ground truth events |
+| `/api/voice/synthesize` | POST | `{text}` → audio/mpeg (server-side ElevenLabs proxy) |
+| `/api/mcp/fivetran` | GET/POST | Fivetran MCP tool manifest + execution |
 | `/api/alerts` | GET | Last 20 alerts sent |
-| `/api/alerts/dispatch` | POST | Dispatch alerts (manual or `{mode:"auto"}`) |
+| `/api/alerts/dispatch` | POST | Dispatch alerts for a prediction |
 | `/api/sync/all` | POST | Full data sync (BWDB + rainfall + forecast) |
 | `/api/seed/historical` | POST | Seed 2022 Sylhet flood data |
 | `/api/gitlab/incidents` | GET | Critical prediction incident URLs |
 | `/api/health` | GET | DB connectivity check |
-| `/api/cron/sync` | GET | Hourly :00 — sync all sources |
-| `/api/cron/predict` | GET | Hourly :15 — run agent predictions |
-| `/api/cron/alert` | GET | Hourly :30 — dispatch unalerted predictions |
+| `/api/cron/sync` | GET | Daily 00:00 UTC — sync all data sources |
+| `/api/cron/predict` | GET | Daily 01:00 UTC — run agent predictions |
+| `/api/cron/alert` | GET | Daily 02:00 UTC — dispatch unalerted predictions |
 
 ## Impact
 
@@ -163,10 +227,10 @@ curl -X POST http://localhost:3000/api/agent \
 
 A 24-hour improvement in evacuation lead time is estimated to reduce flood fatalities by 30–50% (BDRCS historical data).
 
-## Team
+## License
 
-**Minhaz Uddin** — Devixus · Chittagong, Bangladesh
+MIT
 
----
-*Cron pipeline: sync :00 · predict :15 · alert :30 every hour*
-*All predictions traced in Arize Phoenix for continuous improvement*
+## Built by
+
+**Minhaz Uddin** — [Devixus](https://devixus.com), Chittagong, Bangladesh
