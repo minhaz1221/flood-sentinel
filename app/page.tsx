@@ -21,6 +21,11 @@ import type {
   FloodPrediction, RiverStation, RiverReading, AlertSent, PredictionResult,
 } from "@/lib/types";
 import { MONITORING_LOCATIONS } from "@/lib/sync/locations";
+import { useReplay } from "@/contexts/ReplayContext";
+import { buildReplayPredictions, SYLHET_2022_TIMELINE, HERO_HOUR } from "@/lib/replay-data";
+import { ReplayBanner } from "@/components/ReplayBanner";
+import { ReplayToolbar } from "@/components/ReplayToolbar";
+import { CriticalFiredModal } from "@/components/CriticalFiredModal";
 
 const FloodMap = dynamic(
   () => import("@/components/map/FloodMap").then((m) => ({ default: m.FloodMap })),
@@ -341,8 +346,7 @@ export default function DashboardContent() {
   const [criticalDismissed, setCriticalDismissed] = useState<Set<string>>(new Set());
   const [toast, setToast]               = useState<string | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<"rivers" | "charts" | "agentlog">("rivers");
-  const [isHistoricalMode, setIsHistoricalMode] = useState(false);
-  const [historicalLoading, setHistoricalLoading] = useState(false);
+  const replay = useReplay();
 
   // Scenario tester state
   const [isScenarioOpen, setIsScenarioOpen]         = useState(false);
@@ -423,6 +427,7 @@ export default function DashboardContent() {
   /* ── Audio & visual alert (reads localStorage directly) ─── */
   useEffect(() => {
     if (predictions.length === 0) return;
+    if (replay.isActive) return; // suppress live alerts during historical replay
     const newPreds = predictions.filter((p) => !lastPlayedIdsRef.current.has(p.id));
     if (newPreds.length === 0) return;
     predictions.forEach((p) => lastPlayedIdsRef.current.add(p.id));
@@ -608,52 +613,31 @@ export default function DashboardContent() {
     };
   }, []);
 
+  /* ── ESC key exits replay ──────────────── */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && replay.isActive) {
+        replay.stop();
+        setToast("✓ Returned to live monitoring");
+        setTimeout(() => setToast(null), 3000);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [replay.isActive, replay.stop]);
+
   /* ── Historical replay ─────────────────── */
-  const handleHistoricalReplay = useCallback(async () => {
-    setHistoricalLoading(true);
-    setIsHistoricalMode(true); // activate immediately so banner shows right away
-
-    // Start visual alert immediately on user click (no async gap)
-    document.body.classList.add("alert-mode");
-    setAlertMode(true);
-
-    // Start siren only if not muted (still on the user-gesture call stack)
-    try {
-      const muted = localStorage.getItem("floodsentinel_muted") === "true";
-      if (!muted) {
-        startContinuousSiren();
-        setAlarmActive(true);
-      }
-    } catch {}
-
-    try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "historical", targetDate: "2022-06-16" }),
-      });
-      const data = await res.json();
-      if (data.predictions?.length > 0) {
-        setPredictions(data.predictions);
-        setSelectedStation("NE95.4");
-        setToast("Loaded 2022 Sylhet flood data — Sylhet CRITICAL 90/100");
-        setTimeout(() => setToast(null), 5000);
-        // Start favicon/title after we know the upazila name
-        const firstCrit = (data.predictions as FloodPrediction[]).find((p) => p.risk_level === "critical");
-        startFaviconAlert();
-        startTitleAlert(firstCrit?.upazila ?? "Sylhet");
-        (data.predictions as FloodPrediction[])
-          .filter((p) => p.risk_level === "critical")
-          .forEach((p) => sendBrowserNotification(p.upazila, p.risk_score));
-      }
-    } catch (err) {
-      console.error("[REPLAY ERROR]", err);
-    } finally {
-      setHistoricalLoading(false);
-    }
-  }, [sendBrowserNotification]);
+  const handleHistoricalReplay = useCallback(() => {
+    replay.start();
+  }, [replay.start]);
 
   const handleLiveMode = useCallback(async () => {
+    // Stop replay if active
+    if (replay.isActive) {
+      replay.stop();
+      setToast("✓ Returned to live monitoring");
+      setTimeout(() => setToast(null), 3000);
+    }
     // 1. Stop all alerts immediately
     stopSiren();
     setAlarmActive(false);
@@ -662,8 +646,7 @@ export default function DashboardContent() {
     document.body.classList.remove("alert-mode");
     setAlertMode(false);
 
-    // 2. Clear historical state — wipe 2022 predictions from UI right away
-    setIsHistoricalMode(false);
+    // 2. Clear state — wipe any stale predictions
     setPredictions([]);
     setCriticalDismissed(new Set());
     skipNextAudioRef.current = true; // don't re-trigger audio for incoming live data
@@ -712,7 +695,7 @@ export default function DashboardContent() {
       setIsSyncing(false);
       setSyncMessage("");
     }
-  }, [lang]);
+  }, [lang, replay.isActive, replay.stop]);
 
   /* ── Scenario tester ──────────────────── */
   const handleScenario = useCallback(async () => {
@@ -752,10 +735,15 @@ export default function DashboardContent() {
   const criticalPredictions  = (predictions ?? []).filter(
     (p) => p.risk_level === "critical" && !criticalDismissed.has(p.upazila)
   );
-  const urgentPredictions = [...(predictions ?? [])]
+
+  /* ── Replay-derived display values ─────── */
+  const replayPredictions = replay.isActive ? buildReplayPredictions(replay.currentFrame) : [];
+  const displayPredictions = replay.isActive ? replayPredictions : (predictions ?? []);
+
+  const urgentPredictions = [...displayPredictions]
     .sort((a, b) => b.risk_score - a.risk_score)
     .filter((p) => p.risk_level === "critical" || p.risk_level === "high");
-  const otherPredictions  = [...(predictions ?? [])]
+  const otherPredictions  = [...displayPredictions]
     .sort((a, b) => b.risk_score - a.risk_score)
     .filter((p) => p.risk_level !== "critical" && p.risk_level !== "high");
 
@@ -763,9 +751,15 @@ export default function DashboardContent() {
   const highCount = predictions?.filter((p) => p.risk_level === "high").length ?? 0;
   const smsCount  = alerts?.filter((a) => a.channel === "sms").length ?? 0;
   const atRiskZones = critCount + highCount;
-  const lastSyncStr = lastSyncTime
-    ? safeFormatDate(lastSyncTime)
-    : "—";
+  const lastSyncStr = lastSyncTime ? safeFormatDate(lastSyncTime) : "—";
+
+  const displayCritCount  = replay.isActive ? (replay.currentFrame.risk === "CRITICAL" ? 1 : 0) : critCount;
+  const displayHighCount  = replay.isActive ? (replay.currentFrame.risk === "HIGH"     ? 1 : 0) : highCount;
+  const displaySmsCount   = replay.isActive ? (replay.currentFrame.warning_sent ? 1 : 0) : smsCount;
+  const displayAtRisk     = replay.isActive
+    ? (replay.currentFrame.risk === "CRITICAL" ? 267_000 : replay.currentFrame.risk === "HIGH" ? 134_000 : 0)
+    : atRiskZones * 267_000;
+  const displayLastSync   = replay.isActive ? replay.currentFrame.timestamp : lastSyncStr;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--bg-primary)" }}>
@@ -778,10 +772,18 @@ export default function DashboardContent() {
       )}
 
       {/* ── Full-screen red alert overlay ────── */}
-      {alertMode && <div className="alert-overlay" />}
+      {alertMode && !replay.isActive && <div className="alert-overlay" />}
+
+      {/* ── Replay amber tint overlay ─────────── */}
+      {replay.isActive && (
+        <div style={{
+          position: "fixed", inset: 0, pointerEvents: "none",
+          background: "rgba(245,158,11,0.04)", zIndex: 1,
+        }} />
+      )}
 
       {/* ── Emergency broadcast banner ────────── */}
-      {criticalPredictions.length > 0 && (() => {
+      {criticalPredictions.length > 0 && !replay.isActive && (() => {
         const zoneParts = criticalPredictions
           .map((p) => `${p.upazila} (${p.district}): Score ${p.risk_score}`)
           .join(" · ");
@@ -849,7 +851,7 @@ export default function DashboardContent() {
             </span>
           )}
         </div>
-        <button onClick={handleSync} disabled={isSyncing} className="gov-btn no-print" style={{ fontSize: 12, minWidth: 140, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <button onClick={handleSync} disabled={isSyncing || replay.isActive} className="gov-btn no-print" style={{ fontSize: 12, minWidth: 140, display: "inline-flex", alignItems: "center", gap: 6, opacity: replay.isActive ? 0.45 : 1 }}>
           {isSyncing ? (
             <>
               <span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite", flexShrink: 0 }} />
@@ -859,7 +861,19 @@ export default function DashboardContent() {
         </button>
       </div>
 
-      {/* ── Historical replay banner ──────────── */}
+      {/* ── Replay mode amber banner ─────────── */}
+      <ReplayBanner />
+
+      {/* ── Replay critical ticker ───────────── */}
+      {replay.isActive && replay.currentHour >= HERO_HOUR && (
+        <div style={{ background: "#7C2D12", flexShrink: 0, overflow: "hidden" }}>
+          <div style={{ display: "inline-block", whiteSpace: "nowrap", animation: "ticker 18s linear infinite", fontFamily: "var(--font-noto-sans-bengali), sans-serif", fontSize: 11, color: "rgba(255,255,255,0.9)", padding: "4px 0" }}>
+            ⚠ REPLAY 2022 · FLOOD SENTINEL FIRED CRITICAL AT T-32h · BWDB HAS NOT ISSUED WARNING · SYLHET SADAR RIVER AT {replay.currentFrame.sylhet_river_m}m · 267,000 AT RISK &nbsp;&nbsp;&nbsp;&nbsp; ⚠ REPLAY 2022 · FLOOD SENTINEL FIRED CRITICAL AT T-32h · BWDB HAS NOT ISSUED WARNING · SYLHET SADAR RIVER AT {replay.currentFrame.sylhet_river_m}m · 267,000 AT RISK &nbsp;&nbsp;&nbsp;&nbsp;
+          </div>
+        </div>
+      )}
+
+      {/* ── Historical replay controls bar ────── */}
       <div style={{ background: "white", borderBottom: "1px solid var(--border-light)", padding: "8px 20px", flexShrink: 0 }}>
         <div style={{
           background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 6,
@@ -871,21 +885,16 @@ export default function DashboardContent() {
           <div style={{ width: 1, background: "#C7D2FE", alignSelf: "stretch", margin: "0 2px", flexShrink: 0 }} />
           <button
             onClick={handleHistoricalReplay}
-            disabled={historicalLoading}
+            disabled={replay.isActive}
             style={{
-              background: "#c0392b", color: "white", border: "none",
+              background: replay.isActive ? "#6B7280" : "#c0392b", color: "white", border: "none",
               padding: "4px 12px", fontSize: 12, fontWeight: 600,
-              cursor: historicalLoading ? "not-allowed" : "pointer",
+              cursor: replay.isActive ? "default" : "pointer",
               borderRadius: 3, display: "flex", alignItems: "center", gap: 6,
-              opacity: historicalLoading ? 0.75 : 1, flexShrink: 0,
+              opacity: replay.isActive ? 0.6 : 1, flexShrink: 0,
             }}
           >
-            {historicalLoading ? (
-              <>
-                <span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", animation: "spin 0.7s linear infinite", display: "inline-block", flexShrink: 0 }} />
-                Loading…
-              </>
-            ) : "▶ Replay 2022 Sylhet Mega-Flood"}
+            ▶ Replay 2022 Sylhet Mega-Flood
           </button>
           <button
             onClick={handleLiveMode}
@@ -894,47 +903,71 @@ export default function DashboardContent() {
               background: "#27ae60", color: "white", border: "none",
               padding: "4px 12px", fontSize: 12, fontWeight: 600,
               cursor: "pointer", borderRadius: 3, flexShrink: 0,
-              opacity: isHistoricalMode ? 1 : 0.55,
+              opacity: replay.isActive ? 1 : 0.55,
             }}
           >
             ▶ Live Mode
           </button>
-          {isHistoricalMode && (
+          {replay.isActive && (
             <span style={{
               background: "#FEF3C7", border: "1px solid #F59E0B", borderRadius: 3,
               padding: "3px 10px", fontSize: 11, color: "#92400E", fontWeight: 600,
             }}>
-              Viewing 2022 historical data — not live
+              ⏪ Replay active — press ESC or ✕ to exit
             </span>
           )}
         </div>
       </div>
 
       {/* ── KPI cards ─────────────────────────── */}
-      <div style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-light)", padding: "10px 20px", display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, flexShrink: 0 }}>
-        <KPICard label={lang === "bn" ? "বিপদজনক এলাকা" : "Critical Zones"} value={critCount} color={critCount > 0 ? "#c0392b" : "#27ae60"} sub={critCount > 0 ? (lang === "bn" ? "জরুরি সতর্কতা" : "Immediate action") : (lang === "bn" ? "স্বাভাবিক" : "All clear")} />
-        <KPICard label={lang === "bn" ? "উচ্চ ঝুঁকি" : "High Risk Zones"} value={highCount} color="#e67e22" />
-        <KPICard label={lang === "bn" ? "SMS পাঠানো" : "SMS Alerts Sent"} value={smsCount} color="#1a56a0" />
-        <KPICard label={lang === "bn" ? "ঝুঁকিগ্রস্ত মানুষ" : "Est. People at Risk"} value={atRiskZones > 0 ? formatPop(atRiskZones * 267_000) : "0"} color="#8e44ad" sub="~267K/upazila" />
+      <div style={{ background: replay.isActive ? "#FFFBEB" : "var(--bg-surface)", borderBottom: "1px solid var(--border-light)", padding: "10px 20px", display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, flexShrink: 0, transition: "background 0.4s" }}>
+        <KPICard label={lang === "bn" ? "বিপদজনক এলাকা" : "Critical Zones"} value={displayCritCount} color={displayCritCount > 0 ? "#c0392b" : "#27ae60"} sub={displayCritCount > 0 ? (lang === "bn" ? "জরুরি সতর্কতা" : "Immediate action") : (lang === "bn" ? "স্বাভাবিক" : "All clear")} />
+        <KPICard label={lang === "bn" ? "উচ্চ ঝুঁকি" : "High Risk Zones"} value={displayHighCount} color="#e67e22" />
+        <KPICard label={lang === "bn" ? "SMS পাঠানো" : "SMS Alerts Sent"} value={displaySmsCount} color="#1a56a0" />
+        <KPICard label={lang === "bn" ? "ঝুঁকিগ্রস্ত মানুষ" : "Est. People at Risk"} value={displayAtRisk > 0 ? formatPop(displayAtRisk) : "0"} color="#8e44ad" sub="~267K/upazila" />
         <KPICard label={lang === "bn" ? "এআই নির্ভুলতা" : "AI Accuracy"} value="94%" color="#27ae60" sub="Arize verified" />
-        <KPICard label={lang === "bn" ? "শেষ আপডেট" : "Last Sync"} value={lastSyncStr} color="#718096" />
+        <KPICard label={lang === "bn" ? "শেষ আপডেট" : "Last Sync"} value={displayLastSync} color="#718096" />
       </div>
 
-      {/* ── Advance Warning Banner ───────────── */}
-      <AdvanceWarningBanner show={isHistoricalMode} />
+      {/* ── Advance Warning Banner (non-replay mode only) ── */}
+      {!replay.isActive && <AdvanceWarningBanner show={false} />}
 
       {/* ── Main: map (60%) + alert feed (40%) ── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: "500px" }}>
         {/* Map */}
         <div style={{ flex: 6, position: "relative", overflow: "hidden", height: "calc(100vh - 180px)", minHeight: 500 }}>
           <FloodMap
-            predictions={predictions}
+            predictions={displayPredictions}
             stations={stations}
             readings={readings}
             onUpazilaSelect={(u) => setSelectedUpazila(u)}
             isLoading={isSyncing}
             lang={lang}
           />
+
+          {/* ── Historical watermark overlay ── */}
+          {replay.isActive && (
+            <div style={{
+              position: "absolute", bottom: 32, right: 16,
+              pointerEvents: "none", zIndex: 50,
+            }}>
+              <div style={{
+                background: "rgba(0,0,0,0.65)",
+                color: "white",
+                padding: "6px 14px",
+                borderRadius: 4,
+                fontWeight: 700, fontSize: 16,
+                fontFamily: "var(--font-source-code-pro), monospace",
+                letterSpacing: "0.08em",
+                transform: "rotate(-15deg)",
+                transformOrigin: "center",
+                opacity: 0.70,
+                userSelect: "none",
+              }}>
+                HISTORICAL · 2022
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Alert feed */}
@@ -956,7 +989,61 @@ export default function DashboardContent() {
           </div>
 
           <div style={{ flex: 1, overflowY: "auto" }}>
-            {(predictions?.length ?? 0) === 0 && !isLoading ? (
+            {replay.isActive ? (
+              /* ── Replay event log ────────────── */
+              <>
+                <div style={{ padding: "6px 14px", background: "#FEF3C7", borderBottom: "1px solid #FCD34D", flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, color: "#92400E", fontFamily: "var(--font-source-code-pro), monospace", fontWeight: 700, letterSpacing: "0.06em" }}>
+                    📅 REPLAY LOG — 2022 SYLHET EVENT
+                  </span>
+                </div>
+                {[...SYLHET_2022_TIMELINE]
+                  .filter((e) => e.hour <= replay.currentHour)
+                  .sort((a, b) => b.hour - a.hour)
+                  .map((event) => {
+                    const riskColor = event.risk === "CRITICAL" ? "#c0392b" : event.risk === "HIGH" ? "#e67e22" : event.risk === "MEDIUM" ? "#f39c12" : "#27ae60";
+                    const isHero = event.hour === HERO_HOUR;
+                    return (
+                      <div key={event.hour} style={{
+                        padding: "10px 14px", borderBottom: "1px solid var(--border-light)",
+                        borderLeft: `3px solid ${riskColor}`,
+                        background: isHero ? "#FEF2F2" : "white",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 10, color: "#718096", fontFamily: "var(--font-source-code-pro), monospace" }}>
+                            📅 {event.timestamp}
+                          </span>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: riskColor, background: `${riskColor}18`, padding: "1px 5px", borderRadius: 2 }}>
+                            {event.risk}
+                          </span>
+                          {event.warning_sent && !event.bwdb_warned && (
+                            <span style={{ fontSize: 9, color: "#27ae60", fontWeight: 700 }}>✅ FS WARNED</span>
+                          )}
+                          {event.bwdb_warned && (
+                            <span style={{ fontSize: 9, color: "#D97706", fontWeight: 700 }}>🏛 BWDB WARNED</span>
+                          )}
+                        </div>
+                        <p style={{ margin: "0 0 4px", fontSize: 11, color: "#1a1a2e", fontWeight: isHero ? 700 : 400, lineHeight: 1.5 }}>
+                          {event.agent_note}
+                        </p>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <span style={{ fontSize: 10, color: "#718096" }}>🌊 {event.sylhet_river_m}m</span>
+                          <span style={{ fontSize: 10, color: "#718096" }}>🌧 {event.rainfall_24h_mm}mm/24h</span>
+                          <span style={{ fontSize: 10, color: "#718096" }}>📊 {event.danger_level_pct}% danger</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                }
+                {[...SYLHET_2022_TIMELINE].filter((e) => e.hour <= replay.currentHour).length === 0 && (
+                  <div style={{ padding: 20, textAlign: "center" }}>
+                    <p style={{ fontSize: 12, color: "#718096", fontFamily: "var(--font-source-code-pro), monospace" }}>
+                      No events yet — play to advance timeline
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (predictions?.length ?? 0) === 0 && !isLoading ? (
               <div style={{ padding: 24, textAlign: "center" }}>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, fontFamily: "var(--font-noto-sans-bengali), sans-serif" }}>
                   {lang === "bn" ? "তথ্য নেই — সিঙ্ক করুন" : "No predictions — run a sync"}
@@ -1053,7 +1140,7 @@ export default function DashboardContent() {
                 dangerLevel={selectedStationObj?.danger_level ?? null}
                 warningLevel={selectedStationObj?.warning_level ?? null}
                 lang={lang}
-                isHistoricalMode={isHistoricalMode}
+                isHistoricalMode={replay.isActive}
               />
             ) : (
               <RiverStationsTable
@@ -1212,6 +1299,13 @@ export default function DashboardContent() {
           {toast}
         </div>
       )}
+
+      {/* ── Replay components (global) ───────── */}
+      <CriticalFiredModal />
+      <ReplayToolbar />
+
+      {/* Spacer so content doesn't hide behind the replay toolbar */}
+      {replay.isActive && <div style={{ height: 76, flexShrink: 0 }} />}
     </div>
   );
 }
