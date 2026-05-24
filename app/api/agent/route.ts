@@ -8,19 +8,32 @@ import { logPredictionTrace } from "@/lib/arize/trace";
 import { createFloodIncident } from "@/lib/gitlab/incidents";
 import type { AgentRequest, PredictionResult, FloodPrediction, GeminiKeySignal } from "@/lib/types";
 
-// GET — latest prediction per upazila (last 6 hours)
+// GET — latest prediction per upazila (last 6 hours, fallback to most recent 100)
 export async function GET() {
   try {
     const supabase = createAdminClient();
     const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
 
-    const { data, error } = await supabase
+    // Try recent 6-hour window first
+    let { data, error } = await supabase
       .from("flood_predictions")
       .select()
       .gte("predicted_at", since)
       .order("predicted_at", { ascending: false });
 
     if (error) throw error;
+
+    // Fallback: if no recent predictions exist (e.g. seeded/historical data),
+    // return the most recent 100 rows across all time
+    if (!data || data.length === 0) {
+      const fallback = await supabase
+        .from("flood_predictions")
+        .select()
+        .order("predicted_at", { ascending: false })
+        .limit(100);
+      if (fallback.error) throw fallback.error;
+      data = fallback.data ?? [];
+    }
 
     // Deduplicate: keep latest per upazila
     const latestByUpazila = new Map<string, typeof data[0]>();

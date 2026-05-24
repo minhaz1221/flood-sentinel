@@ -965,7 +965,7 @@ export default function DashboardContent() {
           {/* ── Historical watermark overlay ── */}
           {replay.isActive && (
             <div style={{
-              position: "absolute", bottom: 32, right: 16,
+              position: "absolute", bottom: 100, right: 16,
               pointerEvents: "none", zIndex: 50,
             }}>
               <div style={{
