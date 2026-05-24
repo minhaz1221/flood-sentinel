@@ -50,6 +50,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isMuted, setIsMuted] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const replay = useReplay();
 
   useEffect(() => {
@@ -82,8 +83,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
 
+      {/* Mobile backdrop — closes sidebar when tapped */}
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+
       {/* ── Sidebar ─────────────────────────────────────────── */}
-      <aside style={{
+      <aside className={`app-sidebar${sidebarOpen ? " sidebar-open" : ""}`} style={{
         width: 220, flexShrink: 0, height: "100vh",
         background: "white", borderRight: "1px solid var(--border-light)",
         display: "flex", flexDirection: "column",
@@ -151,7 +155,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
             return (
-              <Link key={item.href} href={item.href} style={{
+              <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)} style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
@@ -180,7 +184,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             v1.0 · Gemini 2.5 Flash
           </p>
           <p style={{ fontSize: 10, color: "#a0aec0", fontFamily: "var(--font-source-code-pro), monospace", margin: 0, wordBreak: "break-all" }}>
-            flood-sentinel-seven.vercel.app
+            flood-sentinel.devixus.com
           </p>
         </div>
       </aside>
@@ -195,6 +199,21 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           borderBottom: "1px solid var(--border-light)",
           display: "flex", alignItems: "center", gap: 10, padding: "0 20px",
         }}>
+          {/* Mobile hamburger */}
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen((o) => !o)}
+            style={{
+              background: "none", border: "1px solid var(--border-medium)",
+              borderRadius: 4, padding: "5px 8px", cursor: "pointer",
+              display: "none", alignItems: "center", justifyContent: "center",
+              color: "#4a5568", fontSize: 18, lineHeight: 1, flexShrink: 0,
+            }}
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+
           {/* Left: small logo mark */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <TopbarLogo />

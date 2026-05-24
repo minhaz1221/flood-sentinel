@@ -382,6 +382,38 @@ p  { font-size: 13px; line-height: 1.6; color: #4a5568; margin: 0; }
   100% { transform: translateX(-50%); }
 }
 
+/* ── Mobile responsive ─────────────────────────── */
+.hamburger-btn { display: none; }
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  .app-sidebar {
+    position: fixed !important;
+    left: -220px !important;
+    top: 0 !important;
+    z-index: 1000;
+    height: 100vh !important;
+    transition: left 0.25s ease;
+  }
+  .app-sidebar.sidebar-open {
+    left: 0 !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.18);
+  }
+  .sidebar-backdrop {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 999;
+    cursor: pointer;
+  }
+  .hamburger-btn { display: flex !important; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .page-stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .dashboard-main { flex-direction: column !important; }
+  .replay-toolbar { left: 0 !important; }
+}
+
 /* ── Print styles ───────────────────────────────── */
 @media print {
   .no-print { display: none !important; }

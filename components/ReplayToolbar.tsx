@@ -27,7 +27,7 @@ export function ReplayToolbar() {
   const sliderPct = ((currentHour - MIN_HOUR) / TOTAL_HOURS) * 100;
 
   return (
-    <div style={{
+    <div className="replay-toolbar" style={{
       position: "fixed",
       bottom: 0, left: 220, right: 0,
       zIndex: 400,
