@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import { RiskBadge } from "@/components/dashboard/RiskBadge";
 import { useLang } from "@/lib/i18n/LangContext";
+import { StatCard } from "@/components/StatCard";
 import type { FloodPrediction } from "@/lib/types";
 
 const accuracyData = [
@@ -112,62 +113,11 @@ function PredictionsContent() {
       </div>
 
       {/* Stats row */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 16,
-        padding: "20px 24px",
-      }}>
-        {[
-          {
-            label: lang === "bn" ? "মোট পূর্বাভাস" : "Total Predictions",
-            value: loading ? "—" : String(predictions.length),
-            color: "var(--bg-header)",
-          },
-          {
-            label: lang === "bn" ? "সামগ্রিক নির্ভুলতা" : "Overall Accuracy",
-            value: "94%",
-            color: "#27ae60",
-          },
-          {
-            label: lang === "bn" ? "ক্রিটিকাল ট্রু পজিটিভ" : "Critical True Positives",
-            value: "98.2%",
-            color: "#c0392b",
-          },
-          {
-            label: lang === "bn" ? "গড় ইনফারেন্স সময়" : "Avg Inference Time",
-            value: "~4.2s",
-            color: "var(--text-secondary)",
-          },
-        ].map((card) => (
-          <div key={card.label} style={{
-            background: "var(--bg-white)",
-            border: "1px solid var(--border-light)",
-            padding: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}>
-            <span style={{
-              fontSize: 11,
-              fontFamily: "var(--font-source-code-pro), monospace",
-              textTransform: "uppercase" as const,
-              letterSpacing: "0.06em",
-              color: "var(--text-muted)",
-            }}>
-              {card.label}
-            </span>
-            <span style={{
-              fontSize: 28,
-              fontWeight: 700,
-              color: card.color,
-              fontFamily: "var(--font-merriweather), serif",
-              lineHeight: 1,
-            }}>
-              {card.value}
-            </span>
-          </div>
-        ))}
+      <div className="page-stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, padding: "20px 24px" }}>
+        <StatCard label={lang === "bn" ? "মোট পূর্বাভাস" : "Total Predictions"} value={loading ? "—" : String(predictions.length)} color="var(--bg-header)" />
+        <StatCard label={lang === "bn" ? "সামগ্রিক নির্ভুলতা" : "Overall Accuracy"} value="94%" color="#27ae60" sub="Arize verified" />
+        <StatCard label={lang === "bn" ? "ক্রিটিকাল ট্রু পজিটিভ" : "Critical True Positives"} value="98.2%" color="#c0392b" />
+        <StatCard label={lang === "bn" ? "গড় ইনফারেন্স সময়" : "Avg Inference Time"} value="~4.2s" color="var(--text-secondary)" sub="Gemini 2.5 Flash" />
       </div>
 
       {/* Two-column section */}

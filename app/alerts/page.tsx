@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { safeFormatDate } from "@/lib/utils/dateFormat";
 import { RiskBadge } from "@/components/dashboard/RiskBadge";
 import { useLang } from "@/lib/i18n/LangContext";
+import { StatCard } from "@/components/StatCard";
 import type { FloodPrediction, AlertSent } from "@/lib/types";
 
 type TabFilter = "all" | "critical" | "high" | "medium";
@@ -18,37 +19,6 @@ const RISK_BORDER: Record<string, string> = {
 
 const RISK_ORDER: Record<string, number> = { critical: 1, high: 2, medium: 3, low: 4 };
 
-function StatCard({ label, value, color }: { label: string; value: string | number; color: string }) {
-  return (
-    <div style={{
-      background: "var(--bg-white)",
-      border: "1px solid var(--border-light)",
-      padding: 16,
-      display: "flex",
-      flexDirection: "column",
-      gap: 6,
-    }}>
-      <span style={{
-        fontSize: 11,
-        fontFamily: "var(--font-source-code-pro), monospace",
-        textTransform: "uppercase" as const,
-        letterSpacing: "0.06em",
-        color: "var(--text-muted)",
-      }}>
-        {label}
-      </span>
-      <span style={{
-        fontSize: 28,
-        fontWeight: 700,
-        color,
-        fontFamily: "var(--font-merriweather), serif",
-        lineHeight: 1,
-      }}>
-        {value}
-      </span>
-    </div>
-  );
-}
 
 const SmsIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
