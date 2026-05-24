@@ -349,7 +349,7 @@ function ArizeTracesContent() {
           {lang === "bn" ? "এআই পর্যবেক্ষণ ও ট্রেস বিশ্লেষণ" : "AI observability and trace analysis"}
         </p>
         <p style={{ margin: "2px 0 0", fontSize: 11, color: "#718096", fontFamily: "var(--font-source-code-pro), monospace" }}>
-          Gemini 2.5 Flash · prediction traces · self-improving evaluation loop
+          Gemini 2.5 Flash Lite · prediction traces · self-improving evaluation loop
         </p>
       </div>
 

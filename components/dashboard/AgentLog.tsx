@@ -81,7 +81,7 @@ function buildLines(predictions: FloodPrediction[]): LogLine[] {
       });
     }
 
-    lines.push({ id: `${p.id}-gemini`, ts: formatTs(t(-1500)), text: "🤖 Calling Gemini 2.5 Flash...", color: "#718096" });
+    lines.push({ id: `${p.id}-gemini`, ts: formatTs(t(-1500)), text: "🤖 Calling Gemini 2.5 Flash Lite...", color: "#718096" });
 
     const icon = p.risk_level === "critical" ? "🚨" : p.risk_level === "high" ? "⚠" : p.risk_level === "medium" ? "🟡" : "✅";
     lines.push({

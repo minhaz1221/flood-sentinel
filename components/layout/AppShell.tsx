@@ -181,7 +181,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         {/* Sidebar footer */}
         <div style={{ borderTop: "1px solid var(--border-light)", padding: "10px 14px", flexShrink: 0, background: "#fafafa" }}>
           <p style={{ fontSize: 11, color: "#718096", fontFamily: "var(--font-source-code-pro), monospace", margin: "0 0 2px" }}>
-            v1.0 · Gemini 2.5 Flash
+            v1.0 · Gemini 2.5 Flash Lite
           </p>
           <p style={{ fontSize: 10, color: "#a0aec0", fontFamily: "var(--font-source-code-pro), monospace", margin: 0, wordBreak: "break-all" }}>
             flood-sentinel.devixus.com

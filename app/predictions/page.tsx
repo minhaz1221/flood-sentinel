@@ -108,7 +108,7 @@ function PredictionsContent() {
           color: "var(--text-muted)",
           fontFamily: "var(--font-source-code-pro), monospace",
         }}>
-          Arize Phoenix monitored · Gemini 2.5 Flash
+          Arize Phoenix monitored · Gemini 2.5 Flash Lite
         </p>
       </div>
 
@@ -117,7 +117,7 @@ function PredictionsContent() {
         <StatCard label={lang === "bn" ? "মোট পূর্বাভাস" : "Total Predictions"} value={loading ? "—" : String(predictions.length)} color="var(--bg-header)" />
         <StatCard label={lang === "bn" ? "সামগ্রিক নির্ভুলতা" : "Overall Accuracy"} value="94%" color="#27ae60" sub="Arize verified" />
         <StatCard label={lang === "bn" ? "ক্রিটিকাল ট্রু পজিটিভ" : "Critical True Positives"} value="98.2%" color="#c0392b" />
-        <StatCard label={lang === "bn" ? "গড় ইনফারেন্স সময়" : "Avg Inference Time"} value="~4.2s" color="var(--text-secondary)" sub="Gemini 2.5 Flash" />
+        <StatCard label={lang === "bn" ? "গড় ইনফারেন্স সময়" : "Avg Inference Time"} value="~4.2s" color="var(--text-secondary)" sub="Gemini 2.5 Flash Lite" />
       </div>
 
       {/* Two-column section */}
@@ -302,34 +302,16 @@ function PredictionsContent() {
                               : <span style={{ color: "var(--text-muted)" }}>—</span>}
                           </td>
                           <td>
-                            {p.arize_trace_id ? (
-                              <a
-                                href={process.env.NEXT_PUBLIC_ARIZE_DASHBOARD_URL ?? "#"}
-                                target={process.env.NEXT_PUBLIC_ARIZE_DASHBOARD_URL ? "_blank" : undefined}
-                                rel="noopener noreferrer"
-                                style={{
-                                  display: "inline-flex", alignItems: "center", gap: 3,
-                                  padding: "2px 7px", borderRadius: 9999,
-                                  background: "#f0fdfa", color: "#0f766e",
-                                  border: "1px solid #99f6e4",
-                                  fontSize: 11, fontWeight: 600, textDecoration: "none",
-                                  fontFamily: "var(--font-source-code-pro), monospace",
-                                }}
-                              >
-                                ✓ Traced ↗
-                              </a>
-                            ) : (
-                              <span style={{
-                                display: "inline-flex", alignItems: "center", gap: 3,
-                                padding: "2px 7px", borderRadius: 9999,
-                                background: "#f0fdfa", color: "#0f766e",
-                                border: "1px solid #99f6e4",
-                                fontSize: 11, fontWeight: 600,
-                                fontFamily: "var(--font-source-code-pro), monospace",
-                              }}>
-                                ✓ Traced
-                              </span>
-                            )}
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 3,
+                              padding: "2px 7px", borderRadius: 9999,
+                              background: "#f0fdfa", color: "#0f766e",
+                              border: "1px solid #99f6e4",
+                              fontSize: 11, fontWeight: 600,
+                              fontFamily: "var(--font-source-code-pro), monospace",
+                            }}>
+                              ✓ Traced
+                            </span>
                           </td>
                         </tr>
                       ))}
