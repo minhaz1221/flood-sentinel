@@ -26,7 +26,7 @@ Flood Sentinel is a hyperlocal, AI-powered flood risk prediction system that del
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                         DATA SOURCES                             │
-│  BWDB/FFWC river gauges   Open-Meteo rainfall  NOAA GFS forecast │
+│  BWDB/FFWC river gauges   Open-Meteo rainfall  GFS forecast       │
 │        (scraped hourly)      (API, free)          (7-day daily)  │
 └──────────┬────────────────────┬─────────────────────┬───────────┘
            │                   │                     │

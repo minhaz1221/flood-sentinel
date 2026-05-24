@@ -366,7 +366,7 @@ function DataSourcesContent() {
       logSource: "open_meteo_rainfall",
     },
     {
-      icon: <ForecastIcon size={20} />, name: "NOAA GFS Forecast", org: "7-day weather model output",
+      icon: <ForecastIcon size={20} />, name: "GFS Forecast (via Open-Meteo)", org: "NOAA GFS via Open-Meteo · 7-day forecast",
       status: syncLogs["open_meteo_gfs"] ? "HEALTHY" : "SYNCING",
       records: loading ? "…" : fmtCount(dbStats?.weather_forecasts),
       freq: lang === "bn" ? "প্রতি ১২ ঘণ্টা" : "Every 12 hours",
