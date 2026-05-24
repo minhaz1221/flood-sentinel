@@ -9,6 +9,7 @@ import {
   DashboardIcon, PredictionsIcon, AlertsIcon, DataSourcesIcon, TracesIcon,
   BellIcon, VolumeIcon, VolumeOffIcon,
 } from "@/components/icons";
+import { ReplayProvider, useReplay } from "@/contexts/ReplayContext";
 
 function SidebarLogo() {
   return (
@@ -49,12 +50,21 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isMuted, setIsMuted] = useState(false);
   const [now, setNow] = useState(new Date());
+  const replay = useReplay();
 
   useEffect(() => {
     try { setIsMuted(localStorage.getItem("floodsentinel_muted") === "true"); } catch {}
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Auto-exit replay when navigating away from dashboard
+  useEffect(() => {
+    if (pathname !== "/" && replay.isActive) {
+      replay.stop();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const toggleMute = () => {
     const next = !isMuted;
@@ -109,6 +119,32 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </p>
           </div>
         </div>
+
+        {/* Replay pill in sidebar */}
+        {replay.isActive && (
+          <div style={{
+            margin: "6px 10px 2px",
+            background: "linear-gradient(90deg, #92400E, #B45309)",
+            border: "1px solid #F59E0B",
+            borderRadius: 4,
+            padding: "5px 10px",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: "#FDE68A",
+              display: "inline-block", flexShrink: 0,
+              animation: "blink-dot 1s ease-in-out infinite",
+            }} />
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: "#FEF3C7",
+              fontFamily: "var(--font-source-code-pro), monospace",
+              letterSpacing: "0.04em",
+            }}>
+              🕐 Time Travel Active
+            </span>
+          </div>
+        )}
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: "6px 0", overflowY: "auto" }}>
@@ -276,7 +312,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <LangProvider>
-      <AppShellInner>{children}</AppShellInner>
+      <ReplayProvider>
+        <AppShellInner>{children}</AppShellInner>
+      </ReplayProvider>
     </LangProvider>
   );
 }
